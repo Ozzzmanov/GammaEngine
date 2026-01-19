@@ -361,3 +361,15 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/Assets/city_lubech
+/Assets/karavan
+/Assets/outlands
+/Assets/outlands2
+/Assets/polar
+/Assets/steppe
+/Assets/terrain.png
+/Assets/textures
+/Assets/tunguska
+/Assets/tunguska2
+/Assets/vesuvius
+/Simple.hlsl
