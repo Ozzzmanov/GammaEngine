@@ -1,0 +1,93 @@
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
+██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
+██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
+╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+
+================================================================================
+CHANGELOG AND ARCHITECTURAL DIFFERENCES
+FROM THE ORIGINAL ENGINE (BigWorld Technology)
+================================================================================
+
+1. RENDERING BACKEND (GRAPHICS API)
+--------------------------------------------------------------------------------
+[ORIGINAL]
+Uses DirectX 9.0c.
+- Fixed Function Pipeline or obsolete shaders (SM 2.0/3.0).
+- Lack of hardware support for modern GPU features.
+- Dependency on deprecated D3DX9 libraries.
+
+[GAMMA ENGINE]
+Uses DirectX 11.
+- Fully Programmable Pipeline.
+- Uses Shader Model 5.0 (HLSL).
+- Support for modern buffer formats and state objects.
+
+2. TERRAIN TEXTURING SYSTEM
+--------------------------------------------------------------------------------
+[ORIGINAL]
+Multi-Pass Rendering or Texture Atlases.
+- DX9 Limitation: Inability to bind many textures to a single shader.
+- Rendering: Terrain was drawn in multiple passes (4 layers at a time) 
+  or used complex and heavy texture atlases.
+- Performance drop when using a large number of blend layers.
+
+[GAMMA ENGINE]
+Texture Arrays (Texture2DArray).
+- All chunk textures are loaded into a single resource array.
+- Rendering is performed in a Single Draw Call regardless of the number of 
+  layers (up to 8 and more).
+- The shader selects the required layer by index from the array, significantly 
+  reducing CPU overhead and bus traffic.
+
+3. LAYER BLENDING
+--------------------------------------------------------------------------------
+[ORIGINAL]
+Using a single mask (RGBA) limited the number of layers to 4.
+Adding a 5th layer required an additional geometry pass drawn on top of the 
+previous one (Overdraw).
+
+[GAMMA ENGINE]
+Dual Blend Maps System.
+- Uses two blend textures simultaneously.
+- This allows blending up to 8 unique layers (textures) in a single pixel 
+  without redrawing geometry.
+
+4. MATHEMATICS FOUNDATION
+--------------------------------------------------------------------------------
+[ORIGINAL]
+D3DX Math Library.
+- Obsolete mathematical functions executed on the FPU.
+- Slow vector and matrix operations.
+
+[GAMMA ENGINE]
+DirectXMath (SIMD).
+- Uses SSE2/AVX processor instructions for vector calculations.
+- High performance in physics and transformation calculations (World/View/Proj).
+
+5. FILE AND DATA HANDLING
+--------------------------------------------------------------------------------
+[ORIGINAL]
+Complex dependency on Python scripts and proprietary XML/Binary parsers.
+- Hardcoded binding to the `res/` folder structure.
+- Use of outdated ZIP archiving mechanisms.
+
+[GAMMA ENGINE]
+Native Modern C++ (C++17/20).
+- Direct parsing of binary formats (.cdata, .chunk) via custom classes 
+  (BwPackedSection).
+- Use of std::filesystem for cross-platform path handling.
+- No external dependencies (except system libs and DirectXTK).
+- On-the-fly decoding of QPNG (compressed heightmaps) without conversion to BMP.
+
+6. MEMORY MANAGEMENT
+--------------------------------------------------------------------------------
+[ORIGINAL]
+Use of raw pointers and manual reference counting (AddRef/Release), 
+which often led to memory leaks.
+
+[GAMMA ENGINE]
+RAII and Smart Pointers.
+- Pervasive use of std::unique_ptr and ComPtr (for DX11 resources).
+- Automatic resource release when unloading a chunk or closing the game.

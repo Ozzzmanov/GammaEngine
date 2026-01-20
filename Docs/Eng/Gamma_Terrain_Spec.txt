@@ -1,0 +1,51 @@
+﻿██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
+██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
+██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
+╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+================================================================================
+================================================================================
+TERRAIN DATA FORMAT SPECIFICATION (.CDATA)
+Engine: Gamma Engine
+Format Version: VERSION_ABS_QFLOAT (QPNG) + BwPackedSection
+================================================================================
+
+1. FILE STRUCTURE
+--------------------------------------------------------------------------------
+The .cdata file is a container for heterogeneous data (heights, textures,
+normals). Data can be stored in "raw" format or encapsulated in 
+Packed Sections.
+
+Key Sections:
+1. "terrain2/heights" - Heightmap (Geometry).
+2. "terrain2/normals" - Normal map (Lighting).
+3. "terrain2/layer"   - Texture layer definition.
+
+2. BW PACKED SECTION
+--------------------------------------------------------------------------------
+Many data blocks utilize the BwPackedSection structure.
+Magic Number: 0x62a14e45 ("EN¡b")
+Features:
+- Internal string dictionary.
+- Hierarchical structure (data tree).
+- Support for simple encryption (XOR key: 0x9c).
+
+The engine first checks for the PackedSection header. If found, the data
+is unpacked and decoded before parsing.
+
+3. HEIGHTMAP
+--------------------------------------------------------------------------------
+Format: QPNG (Quantized PNG).
+Height data is packed into a standard PNG stream.
+Each 4-byte pixel (RGBA) is reinterpreted as a single int32 value.
+Scale: 1 unit = 1 millimeter (0.001 meters).
+
+4. LAYERS
+--------------------------------------------------------------------------------
+Each layer is defined by a data block with a "bld" header (BlendHeader).
+The engine scans for "terrain2/layer" sections.
+Block contents:
+- Texture filename (string).
+- Blend mask data (PNG or Raw byte array).
+- Texture projection matrices.

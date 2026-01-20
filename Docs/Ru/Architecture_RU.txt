@@ -1,0 +1,43 @@
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
+██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
+██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
+╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+
+================================================================================
+================================================================================
+GAMMA ENGINE: PROJECT ARCHITECTURE
+================================================================================
+
+ROOT DIRECTORY
+|-- GammaEngine.h/cpp       # Точка входа в движок. Инициализация и Main Loop.
+|-- Main.cpp                # entry point (main), настройки логгера.
+
+SRC/CORE/ (Базовые системы)
+|-- Window.h/cpp            # Обертка над WinAPI (HWND, Message Pump).
+|-- Timer.h/cpp             # Высокоточный таймер (QueryPerformanceCounter).
+|-- Logger.h                # Система логирования с категориями (Texture, Render...).
+|-- Prerequisites.h         # Общие макросы (HR_CHECK), инклуды и структуры (Vertex).
+
+SRC/GRAPHICS/ (Рендеринг и GPU)
+|-- DX11Renderer.h/cpp      # Инициализация DirectX 11, SwapChain, Z-Buffer, Rasterizer.
+|-- Shader.h/cpp            # Компиляция HLSL, создание InputLayout и SamplerState.
+|-- TextureArray.h/cpp      # Создание Texture2DArray из списка файлов. Валидация форматов.
+|-- ConstantBuffer.h        # Шаблонный класс для удобной передачи данных в шейдер (b0, b1...).
+|-- DDSTextureLoader.h/cpp  # Сторонняя библиотека (Microsoft) для загрузки DDS.
+
+SRC/WORLD/ (Игровая логика и Мир)
+|-- Chunk.h/cpp             # Единица мира (100x100м). Связывает Terrain и координаты сетки.
+|-- Terrain.h/cpp           # Логика ландшафта: парсинг слоев, генерация геометрии, отрисовка.
+
+SRC/RESOURCES/ (Работа с файлами и данными)
+|-- BwPackedSection.h/cpp   # Парсер бинарных секций BigWorld (.cdata).
+|-- HeightMap.h/cpp         # Декодер карт высот (QPNG) и нормалей.
+|-- SpaceSettings.h/cpp     # Парсер XML-подобного файла настроек мира (space.settings).
+|-- stb_image.h             # Библиотека для работы с PNG и ZLib (декомпрессия).
+
+ASSETS/
+|-- Shaders/                # HLSL шейдеры (Terrain.hlsl).
+|-- Fonts/                  # Шрифты для SpriteBatch (UI).
+|-- [LocationName]/         # Папки с данными чанков (.chunk, .cdata).

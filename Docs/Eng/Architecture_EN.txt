@@ -1,0 +1,42 @@
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
+██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
+██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
+╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+
+================================================================================
+GAMMA ENGINE: PROJECT ARCHITECTURE
+================================================================================
+
+ROOT DIRECTORY
+|-- GammaEngine.h/cpp       # Engine entry point. Initialization and Main Loop logic.
+|-- Main.cpp                # Application entry point (main), logger configuration.
+
+SRC/CORE/ (Base Systems)
+|-- Window.h/cpp            # WinAPI wrapper (HWND creation, Message Pump).
+|-- Timer.h/cpp             # High-precision timer (QueryPerformanceCounter).
+|-- Logger.h                # Logging system with categories (Texture, Render, etc.).
+|-- Prerequisites.h         # Common macros (HR_CHECK), includes, and structures (Vertex).
+
+SRC/GRAPHICS/ (Rendering & GPU)
+|-- DX11Renderer.h/cpp      # DirectX 11 initialization, SwapChain, Z-Buffer, Rasterizer.
+|-- Shader.h/cpp            # HLSL compilation, InputLayout and SamplerState creation.
+|-- TextureArray.h/cpp      # Texture2DArray creation from file lists. Format validation.
+|-- ConstantBuffer.h        # Template class for data transfer to shaders (b0, b1...).
+|-- DDSTextureLoader.h/cpp  # Third-party library (Microsoft) for loading DDS files.
+
+SRC/WORLD/ (Game Logic & World)
+|-- Chunk.h/cpp             # World unit (100x100m). Links Terrain and grid coordinates.
+|-- Terrain.h/cpp           # Terrain logic: layer parsing, geometry generation, rendering.
+
+SRC/RESOURCES/ (Data & File Handling)
+|-- BwPackedSection.h/cpp   # Binary section parser for BigWorld formats (.cdata).
+|-- HeightMap.h/cpp         # Heightmap (QPNG) and normal map decoder.
+|-- SpaceSettings.h/cpp     # XML-like parser for world settings (space.settings).
+|-- stb_image.h             # Library for PNG and ZLib handling (decompression).
+
+ASSETS/
+|-- Shaders/                # HLSL shaders (Terrain.hlsl).
+|-- Fonts/                  # Fonts for SpriteBatch (UI).
+|-- [LocationName]/         # Folders containing chunk data (.chunk, .cdata).
