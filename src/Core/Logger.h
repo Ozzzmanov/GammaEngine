@@ -6,78 +6,84 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
-// Класс Logger.
-// Обеспечивает потокобезопасный вывод сообщений в консоль с цветовым кодированием.
+// Logger.h
+// Асинхронный, многопоточный логгер.
 // ================================================================================
 
 #pragma once
 #include <string>
-#include <iostream>
 #include <mutex>
 #include <unordered_map>
+#include <queue>
+#include <thread>
+#include <condition_variable>
+#include <fstream>
+#include <atomic>
 
-// Перечисление всех систем, которые могут писать в лог
 enum class LogCategory {
     General,
     Render,
-    Texture,    // Текстуры, загрузка DDS
-    Terrain,    // Парсинг .cdata, слои
-    Physics,    // Коллизии
-    System      // CPU, Память
+    Texture,
+    Terrain,
+    Physics,
+    System
+};
+
+enum class LogLevel {
+    Info,
+    Warning,
+    Error
+};
+
+struct LogMessage {
+    LogLevel    Level;
+    LogCategory Category;
+    std::string Text;
+    std::string Timestamp;
 };
 
 class Logger {
 public:
-    // Настройка: включить/выключить категорию
-    static void SetCategoryEnabled(LogCategory category, bool enabled) {
-        GetState()[category] = enabled;
-    }
+    // Инициализация потока логирования и открытие файла
+    static void Initialize();
 
-    static void Info(LogCategory category, const std::string& message) {
-        if (IsCategoryEnabled(category)) Print("INFO", category, message);
-    }
+    // Остановка потока и закрытие файла (вызывать при выходе)
+    static void Shutdown();
 
-    static void Warn(LogCategory category, const std::string& message) {
-        if (IsCategoryEnabled(category)) Print("WARN", category, message);
-    }
+    // Настройка фильтров
+    static void SetCategoryEnabled(LogCategory category, bool enabled);
 
-    static void Error(LogCategory category, const std::string& message) {
-        // Ошибки показываем всегда, либо тоже можно фильтровать
-        Print("ERROR", category, message);
-    }
+    // Основные методы записи
+    static void Log(LogLevel level, LogCategory category, const std::string& message);
 
-    // Перегрузки FIX ME
+    // Удобные обертки
+    static void Info(LogCategory category, const std::string& message) { Log(LogLevel::Info, category, message); }
+    static void Warn(LogCategory category, const std::string& message) { Log(LogLevel::Warning, category, message); }
+    static void Error(LogCategory category, const std::string& message) { Log(LogLevel::Error, category, message); }
+
+    // Перегрузки для General
     static void Info(const std::string& message) { Info(LogCategory::General, message); }
     static void Warn(const std::string& message) { Warn(LogCategory::General, message); }
     static void Error(const std::string& message) { Error(LogCategory::General, message); }
 
 private:
-    static std::unordered_map<LogCategory, bool>& GetState() {
-        static std::unordered_map<LogCategory, bool> state;
-        // По умолчанию все включено, если не сказано иное
-        if (state.empty()) {
-            state[LogCategory::General] = true;
-            state[LogCategory::Texture] = true;
-            state[LogCategory::Terrain] = true;
-        }
-        return state;
-    }
+    // Функция рабочего потока
+    static void WorkerThread();
 
-    static bool IsCategoryEnabled(LogCategory category) {
-        return GetState()[category];
-    }
+    // Вспомогательные
+    static std::string GetCategoryPrefix(LogCategory category);
+    static std::string GetLevelPrefix(LogLevel level);
+    static std::string GetCurrentTimeStr();
 
-    static std::string GetCategoryName(LogCategory category) {
-        switch (category) {
-        case LogCategory::Texture: return "[TEXTURE]";
-        case LogCategory::Terrain: return "[TERRAIN]";
-        case LogCategory::Physics: return "[PHYSICS]";
-        default: return "[GENERIC]";
-        }
-    }
+private:
+    // Синхронизация
+    static std::mutex               m_mutex;
+    static std::condition_variable  m_cv;
+    static std::queue<LogMessage>   m_queue;
+    static std::thread              m_worker;
+    static std::atomic<bool>        m_isRunning;
 
-    static void Print(const std::string& level, LogCategory category, const std::string& msg) {
-        // Тут можно добавить цвет или запись в файл
-        std::cout << level << " " << GetCategoryName(category) << ": " << msg << std::endl;
-    }
+    // Состояние
+    static std::unordered_map<LogCategory, bool> m_categoryFilter;
+    static std::ofstream            m_logFile;
 };

@@ -6,32 +6,32 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
-// HeightMap.h
-// Загрузчик карт высот. Поддерживает QPNG (упакованный Int32) и стандартный PNG.
-// Используется для создания геометрии Terrain.
+// LevelTextureManager.h
+// Собирает список текстур со всех чанков и строит единый Texture Array.
 // ================================================================================
 
 #pragma once
 #include "../Core/Prerequisites.h"
+#include "TextureArray.h"
 
-struct ColorRGB {
-    unsigned char r, g, b;
-};
-
-class HeightMap {
+class LevelTextureManager {
 public:
-    // Загрузка высот из буфера памяти (извлеченного из .cdata)
-    // QPNG: 32-битная точность (BigWorld)
-    // PNG: 8-битная точность (Fallback)
-    static bool LoadPackedHeight(
-        const unsigned char* buffer, int len,
-        std::vector<float>& outHeights,
-        int& outWidth, int& outHeight,
-        float quantizationLevel = 0.001f); // 0.001 = миллиметры в метры
+    LevelTextureManager(ID3D11Device* device, ID3D11DeviceContext* context);
+    ~LevelTextureManager() = default;
 
-    // Загрузка карты нормалей (если есть в .cdata)
-    static bool LoadNormalsFromMemory(
-        const unsigned char* buffer, int len,
-        std::vector<ColorRGB>& outNormals,
-        int& outWidth, int& outHeight);
+    void RegisterTexture(const std::string& name);
+    bool BuildArray();
+    int GetTextureIndex(const std::string& name) const;
+
+    ID3D11ShaderResourceView* GetSRV() const {
+        return m_textureArray ? m_textureArray->GetSRV() : nullptr;
+    }
+
+private:
+    ID3D11Device* m_device;
+    ID3D11DeviceContext* m_context;
+
+    std::vector<std::string> m_uniqueTextureNames;
+    std::unordered_map<std::string, int> m_nameToIndexMap;
+    std::unique_ptr<TextureArray> m_textureArray;
 };

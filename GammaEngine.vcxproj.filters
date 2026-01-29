@@ -60,6 +60,33 @@
     <ClCompile Include="src\Resources\BwPackedSection.cpp">
       <Filter>src\Resources</Filter>
     </ClCompile>
+    <ClCompile Include="src\Core\ResourceManager.cpp">
+      <Filter>src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\LevelTextureManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\DataSection.cpp">
+      <Filter>src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\World\WaterVLO.cpp">
+      <Filter>src\World</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\BwBinSection.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\World\VegetationManager.cpp">
+      <Filter>src\World</Filter>
+    </ClCompile>
+    <ClCompile Include="src\World\SpeedTreeLoader.cpp">
+      <Filter>src\World</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\DebugTools.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Logger.cpp">
+      <Filter>src\Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\World\Chunk.h">
@@ -108,6 +135,30 @@
       <Filter>src\Core</Filter>
     </ClInclude>
     <ClInclude Include="src\Resources\BwPackedSection.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\ResourceManager.h">
+      <Filter>src\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\LevelTextureManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\DataSection.h">
+      <Filter>src\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\World\WaterVLO.h">
+      <Filter>src\World</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\BwBinSection.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\World\VegetationManager.h">
+      <Filter>src\World</Filter>
+    </ClInclude>
+    <ClInclude Include="src\World\SpeedTreeLoader.h">
+      <Filter>src\World</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\DebugTools.h">
       <Filter>src\Resources</Filter>
     </ClInclude>
   </ItemGroup>

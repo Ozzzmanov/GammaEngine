@@ -6,50 +6,70 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
-// Класс Chunk.
-// Представляет собой единицу мира (обычно 100x100 метров).
-// Связывает логическую позицию в сетке с графическим представлением (Terrain).
+// Chunk.h
 // ================================================================================
 
 #pragma once
-#include "Terrain.h"
+#include "../Core/Prerequisites.h"
 #include "../Graphics/ConstantBuffer.h"
-#include <memory>
+#include <DirectXCollision.h>
+
+class Terrain;
+class BwPackedSection;
+class LevelTextureManager;
+class VegetationManager;
+struct SpaceParams;
+
+// Структура для передачи данных о воде
+struct ChunkVloInfo {
+    std::string uid;
+    std::string type;
+
+    DirectX::XMFLOAT3 position = { 0,0,0 };
+    DirectX::XMFLOAT3 scale = { 1,1,1 };
+
+    // Флаги, указывающие, были ли эти данные найдены в файле
+    bool hasPosition = false;
+    bool hasScale = false;
+};
 
 class Chunk {
 public:
     Chunk(ID3D11Device* device, ID3D11DeviceContext* context);
-    ~Chunk() = default;
+    ~Chunk();
 
-    // Загрузка данных чанка
-    bool Load(const std::string& chunkFilePath, int gridX, int gridZ, const SpaceParams& params);
+    bool Load(const std::string& chunkFilePath, int gridX, int gridZ,
+        const SpaceParams& params,
+        LevelTextureManager* texMgr,
+        VegetationManager* vegMgr,
+        bool onlyScan);
 
-    // Отрисовка чанка.
-    // Принимает буфер констант и матрицы камеры, чтобы рассчитать свою позицию.
-    void Render(ConstantBuffer<CB_VS_Transform>* cb, const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj);
+    // Оптимизированный рендер: проверяет видимость перед отрисовкой
+    bool Render(ConstantBuffer<CB_VS_Transform>* cb,
+        const DirectX::XMMATRIX& view,
+        const DirectX::XMMATRIX& proj,
+        const DirectX::BoundingFrustum& cameraFrustum,
+        const DirectX::XMFLOAT3& camPos, // Позиция камеры
+        float renderDistanceSq,          // Дистанция в квадрате
+        bool checkVisibility);
 
-    // Геттеры
-    std::string GetName() const { return m_chunkName; }
-    int GetGridX() const { return m_gridX; }
-    int GetGridZ() const { return m_gridZ; }
-    DirectX::XMFLOAT3 GetPosition() const { return m_position; }
-
-    // Получение списка текстур для отладки
-    std::vector<std::string> GetTerrainTextures() const {
-        if (m_terrain) return m_terrain->GetTextureNames();
-        return {};
-    }
+private:
+    void PreScanForWater(const std::vector<char>& buffer);
+    void ScanForVLOs(std::shared_ptr<BwPackedSection> root);
+    void RecursiveVloScan(std::shared_ptr<BwPackedSection> section,
+        std::vector<ChunkVloInfo>& outInfos);
 
 private:
     ID3D11Device* m_device;
     ID3D11DeviceContext* m_context;
 
-    std::string m_chunkName;
-    int m_gridX = 0;
-    int m_gridZ = 0;
+    std::string          m_chunkName;
+    int                  m_gridX = 0;
+    int                  m_gridZ = 0;
+    DirectX::XMFLOAT3    m_position = { 0, 0, 0 };
 
-    // Позиция угла чанка в мире
-    DirectX::XMFLOAT3 m_position = { 0, 0, 0 };
+    // Границы чанка для Frustum Culling
+    DirectX::BoundingBox m_boundingBox;
 
     std::unique_ptr<Terrain> m_terrain;
 };

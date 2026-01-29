@@ -1,4 +1,4 @@
-██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗  
 ██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
 ██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
 ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
@@ -6,8 +6,56 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 
 ================================================================================
-CHANGELOG AND ARCHITECTURAL DIFFERENCES
-FROM THE ORIGINAL ENGINE (BigWorld Technology)
+GAMMA ENGINE: CHANGE LOG & ARCHITECTURE OVERVIEW
+================================================================================
+
+[ CURRENT VERSION: 0.3 ]
+[ DATE: 29.01.2026     ]
+
+================================================================================
+HISTORY OF CHANGES
+================================================================================
+
+v0.3 - OPTIMIZATION & WATER UPDATE (CURRENT)
+--------------------------------------------------------------------------------
+Key Changes:
+
+1. RENDERING OPTIMIZATION (VISIBILITY CULLING):
+   - Implemented Frustum Culling (skipping objects outside the camera view).
+   - Implemented Distance Culling (hard cutoff for objects beyond draw distance).
+   - Performance boost: 5-10x FPS increase on large maps.
+   - Added dynamic controls: Render Distance (Z/X keys) and Optimization Toggle (F1).
+
+2. WATER SYSTEM (WATER VLO):
+   - Full support for VLO (Very Large Objects) of type "Water".
+   - Parsing: Reads parameters from `.vlo` (XML) and geometry from `.odata` (Binary).
+   - Water Shader: Features normal maps, scrolling animations, reflections (Environment Map), and Fresnel effect.
+   - Integration: Water objects respect the Culling system (skipped if invisible or too far).
+
+3. CORE & ARCHITECTURE:
+   - Modularization: Separation of Entry Point (Main.cpp) and Engine Class (GammaEngine).
+   - Asynchronous Logger: Thread-safe logging to file and Debug Output (prevents rendering stalls).
+   - Robust Parsing: `DataSection` correctly handles floating-point numbers regardless of Windows system locale (fixed the comma/dot issue).
+   - Timer: Added delta smoothing for smoother camera movement and physics.
+
+4. RESOURCES:
+   - Rewritten BwBinSection parser: Optimized memory safety and lookup speed (unordered_map).
+   - Optimized HeightMap: Fast decoding for QPNG heightmaps.
+   - Dynamic Buffers: ConstantBuffers switched to DYNAMIC mode (Map/Unmap) for efficient frequent updates.
+
+--------------------------------------------------------------------------------
+
+v0.2 - TERRAIN & TEXTURING (LEGACY BASE)
+--------------------------------------------------------------------------------
+- Implemented basic Terrain rendering.
+- Texture Arrays system for chunk texturing (Single Draw Call).
+- Dual Blend Maps: Blending up to 8 unique layers per chunk.
+- Parsing of basic geometry (.cdata) and world settings (space.settings).
+- Basic Camera implementation (WASD + Mouse).
+
+
+================================================================================
+ARCHITECTURAL DIFFERENCES FROM ORIGINAL TECHNOLOGY (BigWorld)
 ================================================================================
 
 1. RENDERING BACKEND (GRAPHICS API)

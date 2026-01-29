@@ -6,17 +6,17 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
-// Файл предварительных требований.
-// Содержит общие подключения, макросы и определения типов для всего движка.
+// Prerequisites.h
+// Базовые настройки, макросы и библиотеки для всего движка.
 // ================================================================================
 
 #pragma once
 
-
-//Отключаем макросы min/max из Windows.h
+// --- System Definitions ---
 #define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 
-// --- Системные библиотеки ---
+// --- Standard Library ---
 #include <Windows.h>
 #include <string>
 #include <vector>
@@ -26,56 +26,56 @@
 #include <sstream>
 #include <mutex>
 #include <map>
+#include <unordered_map>
 #include <filesystem>
+#include <cmath>
+#include <atomic>
+#include <thread>
 
-// --- DirectX 11 ---
+// --- DirectX 11 & Tools ---
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <wrl/client.h>
 
-// --- DirectXTK (Убедитесь, что пути настроены) ---
+// --- DirectXTK ---
 #include <CommonStates.h>
 #include <SpriteBatch.h>
 #include <SpriteFont.h>
 #include <SimpleMath.h>
 
-// --- Пространства имен ---
+// --- Namespaces ---
 namespace fs = std::filesystem;
 using namespace Microsoft::WRL;
 using namespace DirectX;
 using namespace DirectX::SimpleMath;
 
-// --- Макросы безопасности ---
-
-// Макрос для проверки HRESULT и логирования ошибки
+// --- Safety Macros ---
 #define HR_CHECK(hr, msg) \
     if (FAILED(hr)) { \
-        /* Теперь явно указываем категорию Render */ \
         Logger::Error(LogCategory::Render, std::string(msg) + " [Line: " + std::to_string(__LINE__) + "]"); \
         return false; \
     }
 
-// Макрос для проверки HRESULT без возврата (если есть)
 #define HR_CHECK_VOID(hr, msg) \
     if (FAILED(hr)) { \
         Logger::Error(LogCategory::Render, std::string(msg)); \
         return; \
     }
 
-// --- Базовые структуры ---
+#define SAFE_RELEASE(p) { if (p) { (p)->Release(); (p) = nullptr; } }
+#define UNUSED(x) (void)(x)
 
-// Вершина для ландшафта и простых моделей
+// --- Common Structures ---
+
 struct SimpleVertex {
-    Vector3 Pos;    // Позиция (x, y, z)
-    Vector3 Color;  // Цвет (r, g, b) - используется для отладки
-    Vector3 Normal; // Нормаль (nx, ny, nz) - для освещения
-    Vector2 Tex;    // Текстурные координаты (u, v)
+    Vector3 Pos;
+    Vector3 Color;
+    Vector3 Normal;
+    Vector2 Tex;
 };
 
-// Структура для Constant Buffer (register b0)
-// Должна быть выровнена по 16 байт
-struct CB_VS_Transform {
+__declspec(align(16)) struct CB_VS_Transform {
     Matrix World;
     Matrix View;
     Matrix Projection;

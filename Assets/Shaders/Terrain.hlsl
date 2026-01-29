@@ -1,16 +1,28 @@
+// ===================================================================================
+// Terrain.hlsl (ARRAY MODE - 24 LAYERS)
+// Исправлено: Жесткое выравнивание памяти (packoffset) и порядок компонентов.
+// ===================================================================================
+
 cbuffer TransformBuffer : register(b0) {
     matrix World;
     matrix View;
     matrix Projection;
 };
 
+// C++ Структура:
+// TextureIndices[6] -> 6 векторов по 16 байт = 96 байт. (Регистры c0 - c5)
+// UProj[24]         -> Начинается с 96-го байта. (Регистр c6)
+// VProj[24]         -> Начинается с 96 + 384 = 480-го байта. (Регистр c30)
+
 cbuffer LayerInfo : register(b1) {
-    // [0] = Слои 0-3 (x=L2, y=L1, z=L0, w=L3)
-    // [1] = Слои 4-7 (x=L4, y=L5, z=L6, w=L7)
-    int4 TextureIndices[2]; 
+    // Жестко указываем начало данных (c0)
+    int4 TextureIndices[6] : packoffset(c0);
     
-    float4 UProj[8];
-    float4 VProj[8];
+    // Жестко указываем начало UProj (c6) - это ГАРАНТИРУЕТ, что шейдер будет читать там где надо
+    float4 UProj[24]       : packoffset(c6);
+    
+    // Жестко указываем начало VProj (c30) (6 + 24 = 30)
+    float4 VProj[24]       : packoffset(c30);
 };
 
 struct VS_INPUT {
@@ -26,11 +38,20 @@ struct PS_INPUT {
     float3 Norm : NORMAL;
 };
 
-Texture2DArray DiffuseArray : register(t0);
-Texture2D BlendMap1 : register(t1); // Слои 0-3
-Texture2D BlendMap2 : register(t2); // Слои 4-7
+// Текстурный массив
+Texture2DArray TextureArray : register(t0);
+
+// Карты смешивания (6 штук для 24 слоев)
+Texture2D BlendMap1 : register(t1); 
+Texture2D BlendMap2 : register(t2); 
+Texture2D BlendMap3 : register(t3); 
+Texture2D BlendMap4 : register(t4);
+Texture2D BlendMap5 : register(t5);
+Texture2D BlendMap6 : register(t6);
+
 SamplerState Sampler : register(s0);
 
+// --- Vertex Shader ---
 PS_INPUT VSMain(VS_INPUT input) {
     PS_INPUT output;
     float4 worldPos = mul(float4(input.Pos, 1.0f), World);
@@ -42,83 +63,72 @@ PS_INPUT VSMain(VS_INPUT input) {
     return output;
 }
 
+// --- Pixel Shader ---
 float4 PSMain(PS_INPUT input) : SV_Target {
-    // 1. Читаем ОБЕ карты
+    // 1. Читаем веса из 6 карт смешивания
     float4 b1 = BlendMap1.Sample(Sampler, input.ChunkUV);
     float4 b2 = BlendMap2.Sample(Sampler, input.ChunkUV);
+    float4 b3 = BlendMap3.Sample(Sampler, input.ChunkUV);
+    float4 b4 = BlendMap4.Sample(Sampler, input.ChunkUV);
+    float4 b5 = BlendMap5.Sample(Sampler, input.ChunkUV);
+    float4 b6 = BlendMap6.Sample(Sampler, input.ChunkUV);
 
-    // 2. Извлекаем веса. Порядок должен совпадать с C++!
-    // Map1: B=L0, G=L1, R=L2, A=L3
-    float w0_base = b1.b; // Это не "остаток", а данные из файла. Но часто там 0.
-    float w1 = b1.g;
-    float w2 = b1.r;
-    float w3 = b1.a;
-    
-    // Map2: R=L4, G=L5, B=L6, A=L7
-    float w4 = b2.r;
-    float w5 = b2.g;
-    float w6 = b2.b;
-    float w7 = b2.a;
+    // Собираем веса в массив (BGRA порядок, как в C++)
+    float weights[24];
+    weights[0] = b1.b; weights[1] = b1.g; weights[2] = b1.r; weights[3] = b1.a;
+    weights[4] = b2.b; weights[5] = b2.g; weights[6] = b2.r; weights[7] = b2.a;
+    weights[8] = b3.b; weights[9] = b3.g; weights[10] = b3.r; weights[11] = b3.a;
+    weights[12] = b4.b; weights[13] = b4.g; weights[14] = b4.r; weights[15] = b4.a;
+    weights[16] = b5.b; weights[17] = b5.g; weights[18] = b5.r; weights[19] = b5.a;
+    weights[20] = b6.b; weights[21] = b6.g; weights[22] = b6.r; weights[23] = b6.a;
 
-    // 3. Вычисляем РЕАЛЬНЫЙ вес базового слоя (Layer 0).
-    // Он заполняет всё пространство, не занятое другими слоями.
-    // Если в карте w0_base было что-то записано, мы это игнорируем (или добавляем),
-    // так как в BigWorld слой 0 всегда считается "подложкой".
-    float wTotalOverlay = w1 + w2 + w3 + w4 + w5 + w6 + w7;
-    float w0 = saturate(1.0 - wTotalOverlay);
+    // 2. Нормализация
+    float sum = 0;
+    for(int j=0; j<24; ++j) sum += weights[j];
 
-    float3 finalColor = float3(0,0,0);
-    float4 projPos = float4(input.WorldPos, 1.0f);
-    float2 uv;
-
-    // --- СМЕШИВАНИЕ ---
-    
-    // Слой 0 (Base) -> TextureIndices[0].z
-    if (w0 > 0.001) {
-        uv = float2(dot(projPos, UProj[0]), dot(projPos, VProj[0]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[0].z)).rgb * w0;
-    }
-    // Слой 1 -> TextureIndices[0].y
-    if (w1 > 0.001) {
-        uv = float2(dot(projPos, UProj[1]), dot(projPos, VProj[1]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[0].y)).rgb * w1;
-    }
-    // Слой 2 -> TextureIndices[0].x
-    if (w2 > 0.001) {
-        uv = float2(dot(projPos, UProj[2]), dot(projPos, VProj[2]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[0].x)).rgb * w2;
-    }
-    // Слой 3 -> TextureIndices[0].w
-    if (w3 > 0.001) {
-        uv = float2(dot(projPos, UProj[3]), dot(projPos, VProj[3]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[0].w)).rgb * w3;
-    }
-    // Слой 4 -> TextureIndices[1].x
-    if (w4 > 0.001) {
-        uv = float2(dot(projPos, UProj[4]), dot(projPos, VProj[4]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[1].x)).rgb * w4;
-    }
-    // Слой 5 -> TextureIndices[1].y
-    if (w5 > 0.001) {
-        uv = float2(dot(projPos, UProj[5]), dot(projPos, VProj[5]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[1].y)).rgb * w5;
-    }
-    // Слой 6 -> TextureIndices[1].z
-    if (w6 > 0.001) {
-        uv = float2(dot(projPos, UProj[6]), dot(projPos, VProj[6]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[1].z)).rgb * w6;
-    }
-    // Слой 7 -> TextureIndices[1].w
-    if (w7 > 0.001) {
-        uv = float2(dot(projPos, UProj[7]), dot(projPos, VProj[7]));
-        finalColor += DiffuseArray.Sample(Sampler, float3(uv, TextureIndices[1].w)).rgb * w7;
+    if (sum < 0.001) {
+        weights[0] = 1.0f; 
+    } else if (sum > 1.0) {
+        float invSum = 1.0 / sum;
+        for(int j=0; j<24; ++j) weights[j] *= invSum;
     }
 
-    // --- Освещение ---
+    // 3. Смешивание
+    float3 color = float3(0, 0, 0);
+
+    [unroll]
+    for (int i = 0; i < 24; ++i) {
+        if (weights[i] > 0.001) {
+            int vecIdx = i / 4;
+            int compIdx = i % 4;
+            
+            // --- ИСПРАВЛЕНИЕ: Выбор компонента ---
+            // В C++ мы писали индексы в порядке: [0]=Z(B), [1]=Y(G), [2]=X(R), [3]=W(A)
+            // Шейдер читает int4 как xyzw. Нам нужно "перевернуть" логику чтения, 
+            // чтобы она совпала с записью в C++.
+            
+            int texIndex = 0;
+            int4 indicesVec = TextureIndices[vecIdx];
+
+            if (compIdx == 0) texIndex = indicesVec.z;      // Layer 0 (Blue channel) -> stored in .z
+            else if (compIdx == 1) texIndex = indicesVec.y; // Layer 1 (Green channel) -> stored in .y
+            else if (compIdx == 2) texIndex = indicesVec.x; // Layer 2 (Red channel) -> stored in .x
+            else texIndex = indicesVec.w;                   // Layer 3 (Alpha channel) -> stored in .w
+
+            // Расчет UV с использованием правильного UProj
+            float2 uv = float2(
+                dot(float4(input.WorldPos, 1.0), UProj[i]),
+                dot(float4(input.WorldPos, 1.0), VProj[i])
+            );
+
+            color += TextureArray.Sample(Sampler, float3(uv, texIndex)).rgb * weights[i];
+        }
+    }
+
     float3 norm = normalize(input.Norm);
     float3 lightDir = normalize(float3(0.5, 1.0, -0.5));
-    float diff = max(dot(norm, lightDir), 0.0);
-    float3 lighting = float3(0.3, 0.3, 0.35) + (diff * float3(1.0, 0.95, 0.8));
+    float NdotL = max(dot(norm, lightDir), 0.0);
+    float3 lighting = float3(0.4, 0.4, 0.4) + float3(0.6, 0.6, 0.6) * NdotL;
 
-    return float4(finalColor * lighting, 1.0f);
+    return float4(color * lighting, 1.0);
 }

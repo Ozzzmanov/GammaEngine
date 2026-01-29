@@ -6,18 +6,21 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
+// Terrain.h
+// Класс ландшафта.
+// ================================================================================
+
 #pragma once
 #include "../Core/Prerequisites.h"
-#include "../Graphics/TextureArray.h"
 #include "../Resources/SpaceSettings.h"
+#include "../Graphics/LevelTextureManager.h" 
 #include <vector>
 #include <string>
 #include <memory>
 
-// Структура заголовка слоя внутри .cdata (BigWorld format)
 #pragma pack(push, 1)
 struct BlendHeader {
-    uint32_t magic_;      // "bld\0"
+    uint32_t magic_;
     uint32_t width_;
     uint32_t height_;
     uint32_t bpp_;
@@ -28,14 +31,21 @@ struct BlendHeader {
 };
 #pragma pack(pop)
 
-// Внутреннее представление слоя террейна
+// Структура для CPU (временная, только для загрузки)
 struct TerrainLayer {
     std::string textureName;
-    std::vector<uint8_t> blendData; // Альфа-канал смешивания (8 бит)
+    std::vector<uint8_t> blendData;
     int width = 0;
     int height = 0;
     DirectX::XMFLOAT4 uProj;
     DirectX::XMFLOAT4 vProj;
+};
+
+// Структура для GPU (Constant Buffer)
+struct LayerConstants {
+    DirectX::XMINT4   TextureIndices[6]; // Индексы в TextureArray
+    DirectX::XMFLOAT4 UProj[24];         // Проекция U
+    DirectX::XMFLOAT4 VProj[24];         // Проекция V
 };
 
 class Terrain {
@@ -43,57 +53,55 @@ public:
     Terrain(ID3D11Device* device, ID3D11DeviceContext* context);
     ~Terrain() = default;
 
-    // Загрузка и инициализация ландшафта из .cdata
-    bool Initialize(const std::string& cdataFile, const SpaceParams& spaceParams);
+    bool Initialize(const std::string& cdataFile, const SpaceParams& spaceParams,
+        LevelTextureManager* texManager, bool onlyScan, bool useLegacy);
 
-    // Отрисовка
     void Render();
 
-    // Установка позиции (для правильной привязки координат)
     void SetPosition(float x, float y, float z) { m_position = DirectX::XMFLOAT3(x, y, z); }
 
-    // Геттеры для отладки
+    // Physics / Gameplay
+    float GetHeight(float worldX, float worldZ) const;
     float GetMinHeight() const { return m_minHeight; }
     float GetMaxHeight() const { return m_maxHeight; }
-    const std::vector<std::string>& GetTextureNames() const { return m_layerTextureNames; }
 
 private:
-    // --- Парсинг .cdata ---
-    void ParseLayers(const std::vector<char>& fileData);
+    // Parsing logic
+    void ParseLayers(const std::vector<char>& fileData, std::vector<TerrainLayer>& outLayers);
     bool TryLoadLayerData(const char* dataPtr, size_t maxLen, TerrainLayer& outLayer);
     size_t FindPattern(const std::vector<char>& data, const std::string& pattern, size_t startOffset);
 
-    // --- Создание текстур смешивания ---
-    void CreateCombinedBlendMap();
+    // GPU Resources creation
+    void CreateCombinedBlendMap(const std::vector<TerrainLayer>& layers);
+    void UpdateLayerConstants(const std::vector<TerrainLayer>& layers, LevelTextureManager* texManager);
 
     SpaceParams m_spaceParams;
     DirectX::XMFLOAT3 m_position = { 0, 0, 0 };
+    bool m_useLegacy = false;
+
     float m_minHeight = 0.0f;
     float m_maxHeight = 0.0f;
-    std::string m_currentCDataPath;
 
-    // DX11 Ресурсы
-    ComPtr<ID3D11Device> m_device;
+    ComPtr<ID3D11Device>        m_device;
     ComPtr<ID3D11DeviceContext> m_context;
+
+    // Geometry
     ComPtr<ID3D11Buffer> m_vertexBuffer;
     ComPtr<ID3D11Buffer> m_indexBuffer;
     UINT m_indexCount = 0;
 
-    std::vector<TerrainLayer> m_layers;
-    std::vector<std::string> m_layerTextureNames;
-    std::unique_ptr<TextureArray> m_textureArray;
+    // Resources
+    std::vector<ID3D11ShaderResourceView*> m_legacyTextures; // Только для Legacy режима
 
-    // Две карты смешивания (ARGB + ARGB = 8 каналов)
-    ComPtr<ID3D11Texture2D> m_blendMap1;
-    ComPtr<ID3D11ShaderResourceView> m_blendMapView1;
-    ComPtr<ID3D11Texture2D> m_blendMap2;
-    ComPtr<ID3D11ShaderResourceView> m_blendMapView2;
+    // Blend Maps (до 6 штук по 4 канала = 24 слоя)
+    ComPtr<ID3D11Texture2D>          m_blendMaps[6];
+    ComPtr<ID3D11ShaderResourceView> m_blendMapViews[6];
 
-    // Константный буфер для информации о слоях
-    struct LayerConstants {
-        DirectX::XMINT4 TextureIndices[2]; // Индексы текстур в массиве
-        DirectX::XMFLOAT4 UProj[8];        // Матрицы проекции UV (U)
-        DirectX::XMFLOAT4 VProj[8];        // Матрицы проекции UV (V)
-    };
+    // Constant Buffer (Static)
     ComPtr<ID3D11Buffer> m_layerBuffer;
+
+    std::vector<float> m_heightMap;
+    UINT  m_width = 0;
+    UINT  m_depth = 0;
+    float m_spacing = 1.0f;
 };

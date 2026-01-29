@@ -1,4 +1,4 @@
-██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗  
 ██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
 ██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
 ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
@@ -6,37 +6,35 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 
 ================================================================================
-GAMMA ENGINE: PROJECT ARCHITECTURE
+GAMMA ENGINE: PROJECT ARCHITECTURE (UPDATED)
 ================================================================================
 
 ROOT DIRECTORY
-|-- GammaEngine.h/cpp       # Engine entry point. Initialization and Main Loop logic.
-|-- Main.cpp                # Application entry point (main), logger configuration.
+|-- GammaEngine.h/cpp       # Engine entry point. System management and Main Loop.
+|-- Main.cpp                # Application entry point, global logger setup.
 
 SRC/CORE/ (Base Systems)
-|-- Window.h/cpp            # WinAPI wrapper (HWND creation, Message Pump).
-|-- Timer.h/cpp             # High-precision timer (QueryPerformanceCounter).
-|-- Logger.h                # Logging system with categories (Texture, Render, etc.).
-|-- Prerequisites.h         # Common macros (HR_CHECK), includes, and structures (Vertex).
+|-- Window.h/cpp            # WinAPI wrapper.
+|-- Timer.h/cpp             # High-precision timer with delta smoothing.
+|-- Logger.h/cpp            # Asynchronous, thread-safe logger (Console + File).
+|-- DataSection.h/cpp       # Universal data parser (XML/Binary) with locale safety.
+|-- Prerequisites.h         # Global macros and settings.
 
-SRC/GRAPHICS/ (Rendering & GPU)
-|-- DX11Renderer.h/cpp      # DirectX 11 initialization, SwapChain, Z-Buffer, Rasterizer.
-|-- Shader.h/cpp            # HLSL compilation, InputLayout and SamplerState creation.
-|-- TextureArray.h/cpp      # Texture2DArray creation from file lists. Format validation.
-|-- ConstantBuffer.h        # Template class for data transfer to shaders (b0, b1...).
-|-- DDSTextureLoader.h/cpp  # Third-party library (Microsoft) for loading DDS files.
+SRC/GRAPHICS/ (Rendering)
+|-- DX11Renderer.h/cpp      # DirectX 11 initialization.
+|-- Shader.h/cpp            # HLSL shader management.
+|-- TextureArray.h/cpp      # Texture arrays for terrain.
+|-- ConstantBuffer.h        # Buffer management (Static/Dynamic updates).
+|-- LevelTextureManager.h   # Level texture registry.
 
-SRC/WORLD/ (Game Logic & World)
-|-- Chunk.h/cpp             # World unit (100x100m). Links Terrain and grid coordinates.
-|-- Terrain.h/cpp           # Terrain logic: layer parsing, geometry generation, rendering.
+SRC/WORLD/ (World & Logic)
+|-- Chunk.h/cpp             # World unit. Frustum & Distance Culling logic.
+|-- Terrain.h/cpp           # Landscape: Dual Blend Maps, geometry generation.
+|-- WaterVLO.h/cpp          # [NEW] Water system: rendering, wave physics, VLO.
 
-SRC/RESOURCES/ (Data & File Handling)
-|-- BwPackedSection.h/cpp   # Binary section parser for BigWorld formats (.cdata).
-|-- HeightMap.h/cpp         # Heightmap (QPNG) and normal map decoder.
-|-- SpaceSettings.h/cpp     # XML-like parser for world settings (space.settings).
-|-- stb_image.h             # Library for PNG and ZLib handling (decompression).
-
-ASSETS/
-|-- Shaders/                # HLSL shaders (Terrain.hlsl).
-|-- Fonts/                  # Fonts for SpriteBatch (UI).
-|-- [LocationName]/         # Folders containing chunk data (.chunk, .cdata).
+SRC/RESOURCES/ (File Handling)
+|-- BwPackedSection.h/cpp   # BigWorld binary section parser.
+|-- BwBinSection.h/cpp      # Optimized *.odata parser.
+|-- HeightMap.h/cpp         # QPNG heightmap and normal map decoder.
+|-- SpaceSettings.h/cpp     # World settings parser (space.settings).
+|-- DebugTools.h/cpp        # Format analysis tools (Reverse Engineering).

@@ -1,4 +1,4 @@
-██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗ 
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗  
 ██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
 ██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
 ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
@@ -6,44 +6,37 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 
 ================================================================================
-TEXTURING SYSTEM SPECIFICATION (GAMMA ENGINE)
-Technology: Texture Array + Dual Blend Maps
+TEXTURING SYSTEM SPECIFICATION (GAMMA ENGINE v0.3)
+Technology: Texture Array + Multi-Blend Maps
 ================================================================================
 
 1. GENERAL CONCEPT
 --------------------------------------------------------------------------------
 The terrain is rendered in a Single Pass.
-All diffuse textures (grass, sand, stone) are stored in a SINGLE Texture Array 
-(Texture2DArray, register t0).
+For storing diffuse textures (grass, sand, stone), a SINGLE Texture Array 
+is used (Texture2DArray, register t0).
 
-To determine texture placement, the engine uses TWO control Blend Maps. 
-This architecture supports up to 8 unique layers per chunk.
+To determine where each texture is drawn, SIX control Blend Maps are used. 
+This allows supporting up to 24 unique layers per chunk.
 
 2. BLEND MAPS LAYOUT
 --------------------------------------------------------------------------------
-Layer weights are distributed across the channels of two textures as follows:
+Layer weights are distributed across the channels of 6 textures (RGBA) as follows:
 
-[ BlendMap 1 (Register t1) ]
-----------------------------
-Channel BLUE  (B) -> Layer 0 (Base Layer)
-Channel GREEN (G) -> Layer 1
-Channel RED   (R) -> Layer 2
-Channel ALPHA (A) -> Layer 3
+[ BlendMap 0 (Register t1) ] -> Layers 0, 1, 2, 3
+[ BlendMap 1 (Register t2) ] -> Layers 4, 5, 6, 7
+...
+[ BlendMap 5 (Register t6) ] -> Layers 20, 21, 22, 23
 
-[ BlendMap 2 (Register t2) ]
-----------------------------
-Channel RED   (R) -> Layer 4
-Channel GREEN (G) -> Layer 5
-Channel BLUE  (B) -> Layer 6
-Channel ALPHA (A) -> Layer 7
+Mask data is uploaded to VRAM and immediately released from RAM to save memory.
 
 3. BASE LAYER LOGIC (LAYER 0)
 --------------------------------------------------------------------------------
-Layer 0 acts as the "substrate". Even if the Blue channel of Map 1 contains data, 
-the shader ignores its raw value and recalculates the weight dynamically.
+Layer 0 is special (the "substrate"). The weight of this layer is calculated 
+dynamically in the pixel shader.
 
 Shader Formula:
-   Weight_L0 = saturate(1.0 - (W1 + W2 + W3 + W4 + W5 + W6 + W7));
+   Weight_L0 = saturate(1.0 - (Sum of weights of all other 23 layers));
 
 This ensures watertight coverage: the sum of weights always equals 1.0, 
 preventing black holes on the terrain.
@@ -51,7 +44,8 @@ preventing black holes on the terrain.
 4. TEXTURE PROJECTION
 --------------------------------------------------------------------------------
 Texture coordinates (UV) are calculated using planar mapping in world space.
-Each of the 8 layers has a pair of projection vectors (UProj, VProj).
+For each of the 24 layers, a pair of projection vectors (UProj, VProj) is 
+passed via a constant buffer.
 
    UV.x = dot(WorldPos, UProj[layer_index]);
    UV.y = dot(WorldPos, VProj[layer_index]);
@@ -59,9 +53,9 @@ Each of the 8 layers has a pair of projection vectors (UProj, VProj).
 5. ASSET REQUIREMENTS
 --------------------------------------------------------------------------------
 All textures loaded into the TextureArray MUST share:
-1. Identical compression format (e.g., DXT1/BC1 or DXT5/BC3).
-2. Identical dimensions (Width/Height).
+1. Identical compression format (usually BC1/DXT1 or BC3/DXT5).
+2. Identical dimensions (standard is 1024x1024).
 3. Identical Mip-Map count.
 
-If a mismatch occurs, the engine replaces the texture with a placeholder 
-to prevent GPU driver crashes.
+In case of a mismatch, `ResourceManager` automatically converts the texture 
+or replaces it with a placeholder to prevent driver crashes.

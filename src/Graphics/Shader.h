@@ -6,9 +6,8 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
-// Класс Shader.
-// Компилирует HLSL код, создает Vertex/Pixel шейдеры, Input Layout 
-// и настраивает Sampler State (фильтрацию текстур).
+// Shader.h
+// Управление HLSL шейдерами (VS + PS).
 // ================================================================================
 
 #pragma once
@@ -19,24 +18,21 @@ public:
     Shader(ID3D11Device* device, ID3D11DeviceContext* context);
     ~Shader() = default;
 
-    // Загрузка и компиляция .hlsl файла
     bool Load(const std::wstring& filename);
-
-    // Активация шейдера в конвейере
     void Bind();
 
+    ID3DBlob* GetVSBlob() const { return m_vsBlob.Get(); }
+
 private:
-    // Вспомогательная функция компиляции через D3DCompileFromFile
     bool CompileShader(const std::wstring& filename, const std::string& entryPoint,
         const std::string& profile, ID3DBlob** shaderBlob);
 
-    ComPtr<ID3D11Device> m_device;
+    ComPtr<ID3D11Device>        m_device;
     ComPtr<ID3D11DeviceContext> m_context;
 
-    ComPtr<ID3D11VertexShader> m_vertexShader;
-    ComPtr<ID3D11PixelShader> m_pixelShader;
-    ComPtr<ID3D11InputLayout> m_inputLayout;
-
-    // Сэмплер для текстур (линейная фильтрация + тайлинг)
-    ComPtr<ID3D11SamplerState> m_samplerState;
+    ComPtr<ID3DBlob>            m_vsBlob;
+    ComPtr<ID3D11VertexShader>  m_vertexShader;
+    ComPtr<ID3D11PixelShader>   m_pixelShader;
+    ComPtr<ID3D11InputLayout>   m_inputLayout;
+    ComPtr<ID3D11SamplerState>  m_samplerState;
 };

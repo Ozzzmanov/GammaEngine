@@ -19,38 +19,55 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Core\DataSection.cpp" />
+    <ClCompile Include="src\Core\Logger.cpp" />
+    <ClCompile Include="src\Core\ResourceManager.cpp" />
     <ClCompile Include="src\Core\Timer.cpp" />
     <ClCompile Include="src\Core\Window.cpp" />
     <ClCompile Include="src\GammaEngine.cpp" />
     <ClCompile Include="src\Graphics\DDSTextureLoader.cpp" />
     <ClCompile Include="src\Graphics\DX11Renderer.cpp" />
+    <ClCompile Include="src\Graphics\LevelTextureManager.cpp" />
     <ClCompile Include="src\Graphics\Shader.cpp" />
     <ClCompile Include="src\Graphics\TextureArray.cpp" />
     <ClCompile Include="src\Main.cpp" />
+    <ClCompile Include="src\Resources\BwBinSection.cpp" />
     <ClCompile Include="src\Resources\BwPackedSection.cpp" />
+    <ClCompile Include="src\Resources\DebugTools.cpp" />
     <ClCompile Include="src\Resources\HeightMap.cpp" />
     <ClCompile Include="src\Resources\SpaceSettings.cpp" />
     <ClCompile Include="src\Resources\StbImageImpl.cpp" />
     <ClCompile Include="src\World\Chunk.cpp" />
+    <ClCompile Include="src\World\SpeedTreeLoader.cpp" />
     <ClCompile Include="src\World\Terrain.cpp" />
+    <ClCompile Include="src\World\VegetationManager.cpp" />
+    <ClCompile Include="src\World\WaterVLO.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Core\DataSection.h" />
     <ClInclude Include="src\Core\Logger.h" />
     <ClInclude Include="src\Core\Prerequisites.h" />
+    <ClInclude Include="src\Core\ResourceManager.h" />
     <ClInclude Include="src\Core\Timer.h" />
     <ClInclude Include="src\Core\Window.h" />
     <ClInclude Include="src\GammaEngine.h" />
     <ClInclude Include="src\Graphics\ConstantBuffer.h" />
     <ClInclude Include="src\Graphics\DDSTextureLoader.h" />
     <ClInclude Include="src\Graphics\DX11Renderer.h" />
+    <ClInclude Include="src\Graphics\LevelTextureManager.h" />
     <ClInclude Include="src\Graphics\Shader.h" />
     <ClInclude Include="src\Graphics\TextureArray.h" />
+    <ClInclude Include="src\Resources\BwBinSection.h" />
     <ClInclude Include="src\Resources\BwPackedSection.h" />
+    <ClInclude Include="src\Resources\DebugTools.h" />
     <ClInclude Include="src\Resources\HeightMap.h" />
     <ClInclude Include="src\Resources\SpaceSettings.h" />
     <ClInclude Include="src\Resources\stb_image.h" />
     <ClInclude Include="src\World\Chunk.h" />
+    <ClInclude Include="src\World\SpeedTreeLoader.h" />
     <ClInclude Include="src\World\Terrain.h" />
+    <ClInclude Include="src\World\VegetationManager.h" />
+    <ClInclude Include="src\World\WaterVLO.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -170,11 +187,13 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\directxtk_desktop_2019.2025.10.28.2\build\native\directxtk_desktop_2019.targets" Condition="Exists('..\packages\directxtk_desktop_2019.2025.10.28.2\build\native\directxtk_desktop_2019.targets')" />
+    <Import Project="..\packages\directxtex_desktop_win10.2025.10.28.1\build\native\directxtex_desktop_win10.targets" Condition="Exists('..\packages\directxtex_desktop_win10.2025.10.28.1\build\native\directxtex_desktop_win10.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>Данный проект ссылается на пакеты NuGet, отсутствующие на этом компьютере. Используйте восстановление пакетов NuGet, чтобы скачать их.  Дополнительную информацию см. по адресу: http://go.microsoft.com/fwlink/?LinkID=322105. Отсутствует следующий файл: {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\directxtk_desktop_2019.2025.10.28.2\build\native\directxtk_desktop_2019.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\directxtk_desktop_2019.2025.10.28.2\build\native\directxtk_desktop_2019.targets'))" />
+    <Error Condition="!Exists('..\packages\directxtex_desktop_win10.2025.10.28.1\build\native\directxtex_desktop_win10.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\directxtex_desktop_win10.2025.10.28.1\build\native\directxtex_desktop_win10.targets'))" />
   </Target>
 </Project>

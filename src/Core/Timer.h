@@ -6,8 +6,8 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 //
 // ================================================================================
-// Класс Timer.
-// Использует QueryPerformanceCounter для высокоточного измерения времени кадра (DeltaTime).
+// Timer.h
+// Высокоточный таймер с поддержкой сглаживания дельты.
 // ================================================================================
 
 #pragma once
@@ -17,19 +17,23 @@ class Timer {
 public:
     Timer();
 
-    // Обновляет состояние таймера. Вызывать один раз за кадр.
     void Tick();
-
-    // Возвращает время в секундах, прошедшее с предыдущего кадра.
     float GetDeltaTime() const { return m_deltaTime; }
-
-    // Возвращает общее время работы приложения в секундах.
     float GetTotalTime() const { return m_totalTime; }
 
-private:
-    double m_secondsPerCount; // Частота таймера процессора
-    __int64 m_prevTime;       // Время предыдущего такта
+    // Сброс таймера (например, после загрузки уровня)
+    void Reset();
 
-    float m_deltaTime;        // Текущая дельта
-    float m_totalTime;        // Накопленное время
+private:
+    double  m_secondsPerCount;
+    __int64 m_prevTime;
+    __int64 m_startTime;
+
+    float m_deltaTime;
+    float m_totalTime;
+
+    // Сглаживание
+    static const int MAX_SAMPLE_COUNT = 50;
+    float m_deltaBuffer[MAX_SAMPLE_COUNT];
+    int m_sampleIndex = 0;
 };

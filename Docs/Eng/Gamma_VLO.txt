@@ -1,0 +1,48 @@
+██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗  
+██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
+██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
+██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
+╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+
+================================================================================
+WATER SYSTEM SPECIFICATION (WATER VLO)
+Object Type: Very Large Object (VLO)
+================================================================================
+
+1. FILE STRUCTURE
+--------------------------------------------------------------------------------
+A water object is described by a pair of files with a unique UID:
+
+A. Settings File (*.vlo):
+   - Format: XML (read via DataSection).
+   - Contains: Position, size, texture references (wave map, reflection map), 
+     shader parameters (deep color, wind velocity, sun power).
+
+B. Geometry File (*.odata):
+   - Format: BigWorld Binary (Magic: 0x42a14e65).
+   - "alpha" Section: Bitmask or byte array defining water transparency 
+     (alpha channel) for creating smooth shorelines.
+
+2. RENDERING & SHADERS
+--------------------------------------------------------------------------------
+Water is rendered in a separate pass (Water Pass) after terrain rendering.
+Key shader technologies (Water.hlsl):
+
+- Normal Map Scrolling: Wave animation is achieved by scrolling UV coordinates 
+  of two normal maps against each other.
+- Fresnel Effect: Changes transparency and reflectivity based on the viewing 
+  angle (water is transparent at feet, mirror-like at a distance).
+- Environment Mapping: Fake sky reflections using a Cubemap.
+
+3. OPTIMIZATION (VISIBILITY CULLING)
+--------------------------------------------------------------------------------
+Water objects are integrated into the Gamma Engine's global culling system.
+A BoundingBox (AABB) is calculated for each object:
+- Width/Length: Matches the water surface size.
+- Height: Includes a buffer (+/- 10 meters) to account for wave amplitude.
+
+Rendering cancellation conditions:
+1. Frustum Culling: The water's AABB is completely outside the camera frustum.
+2. Distance Culling: The closest point of the AABB is beyond the global 
+   render distance (`m_renderDistance`).
