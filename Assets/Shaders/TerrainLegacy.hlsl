@@ -1,4 +1,4 @@
-// TerrainLegacy.hlsl (24 Layers Version)
+// TerrainLegacy.hlsl (24 Layers Version + Holes)
 
 cbuffer TransformBuffer : register(b0) {
     matrix World;
@@ -51,6 +51,9 @@ Texture2D BlendMap4 : register(t27); // 12-15
 Texture2D BlendMap5 : register(t28); // 16-19
 Texture2D BlendMap6 : register(t29); // 20-23
 
+// --- НОВОЕ: КАРТА ДЫР (t30) ---
+Texture2D HoleMap : register(t30);
+
 SamplerState Sampler : register(s0);
 
 PS_INPUT VSMain(VS_INPUT input) {
@@ -65,11 +68,22 @@ PS_INPUT VSMain(VS_INPUT input) {
 }
 
 float3 SampleLayerLegacy(Texture2D tex, float4 uProj, float4 vProj, float3 worldPos) {
+    // Legacy projection logic from BigWorld
     float2 uv = float2(dot(float4(worldPos, 1.0), uProj), dot(float4(worldPos, 1.0), vProj));
     return tex.Sample(Sampler, uv).rgb;
 }
 
 float4 PSMain(PS_INPUT input) : SV_Target {
+    // --- 0. ПРОВЕРКА ДЫР (HOLES) ---
+    // Читаем карту дыр. input.ChunkUV - это координаты 0..1 на весь чанк.
+    // В R8_UNORM: 1.0 (белый) = земля, 0.0 (черный) = дырка.
+    float holeValue = HoleMap.Sample(Sampler, input.ChunkUV).r;
+
+    // Функция clip отбрасывает пиксель, если значение < 0.
+    // Если holeValue близко к 0 (дырка), то (0 - 0.5) < 0 -> пиксель удаляется.
+    // Если holeValue = 1 (земля), то (1 - 0.5) > 0 -> пиксель рисуется.
+    clip(holeValue - 0.5f); 
+
     // 1. Читаем 6 карт смешивания
     float4 b1 = BlendMap1.Sample(Sampler, input.ChunkUV);
     float4 b2 = BlendMap2.Sample(Sampler, input.ChunkUV);
@@ -98,6 +112,7 @@ float4 PSMain(PS_INPUT input) : SV_Target {
 
     // 4. Смешивание
     float3 color = float3(0,0,0);
+    // Оптимизация: проверяем вес перед выборкой текстуры
     if (w0 > 0.001) color += SampleLayerLegacy(Tex0, UProj[0], VProj[0], input.WorldPos) * w0;
     if (w1 > 0.001) color += SampleLayerLegacy(Tex1, UProj[1], VProj[1], input.WorldPos) * w1;
     if (w2 > 0.001) color += SampleLayerLegacy(Tex2, UProj[2], VProj[2], input.WorldPos) * w2;

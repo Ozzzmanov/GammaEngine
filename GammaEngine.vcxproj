@@ -31,6 +31,7 @@
     <ClCompile Include="src\Graphics\DX11Renderer.cpp" />
     <ClCompile Include="src\Graphics\LevelTextureManager.cpp" />
     <ClCompile Include="src\Graphics\Shader.cpp" />
+    <ClCompile Include="src\Graphics\StaticModel.cpp" />
     <ClCompile Include="src\Graphics\TextureArray.cpp" />
     <ClCompile Include="src\GUI\DebugOverlay.cpp" />
     <ClCompile Include="src\Main.cpp" />
@@ -62,6 +63,7 @@
     <ClInclude Include="src\Graphics\DX11Renderer.h" />
     <ClInclude Include="src\Graphics\LevelTextureManager.h" />
     <ClInclude Include="src\Graphics\Shader.h" />
+    <ClInclude Include="src\Graphics\StaticModel.h" />
     <ClInclude Include="src\Graphics\TextureArray.h" />
     <ClInclude Include="src\GUI\DebugOverlay.h" />
     <ClInclude Include="src\Resources\BwBinSection.h" />

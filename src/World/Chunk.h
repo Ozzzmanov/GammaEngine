@@ -20,6 +20,7 @@ class LevelTextureManager;
 class VegetationManager;
 struct SpaceParams;
 
+
 // Структура для передачи данных о воде
 struct ChunkVloInfo {
     std::string uid;
@@ -44,7 +45,6 @@ public:
         VegetationManager* vegMgr,
         bool onlyScan);
 
-    // Оптимизированный рендер: проверяет видимость перед отрисовкой
     bool Render(ConstantBuffer<CB_VS_Transform>* cb,
         const DirectX::XMMATRIX& view,
         const DirectX::XMMATRIX& proj,
@@ -52,6 +52,9 @@ public:
         const DirectX::XMFLOAT3& camPos, // Позиция камеры
         float renderDistanceSq,          // Дистанция в квадрате
         bool checkVisibility);
+
+    // Возвращаем указатель на Terrain для манипуляций в WorldLoader
+    Terrain* GetTerrain() const { return m_terrain.get(); }
 
 private:
     void PreScanForWater(const std::vector<char>& buffer);

@@ -91,7 +91,7 @@ bool GammaEngine::Initialize() {
     m_transformBuffer->Initialize(true);
 
     // Загрузка мира
-    m_worldLoader->LoadLocation("Assets/tunguska",
+    m_worldLoader->LoadLocation("Assets/outlands",
         m_chunks, m_waterObjects, m_spaceSettings, m_levelTextureManager, m_useLegacyRender);
 
     Logger::Info(LogCategory::General, "Initialization Complete");
@@ -200,8 +200,6 @@ void GammaEngine::Render() {
     // --- Вода ---
     float gameTime = m_timer.GetTotalTime();
     for (const auto& water : m_waterObjects) {
-        // Для рендеринга воды нужна реальная позиция камеры (GetPosition), 
-        // но для отсечения (Frustum) берем данные из камеры (которые могут быть заморожены)
         water->Render(XMLoadFloat4x4(&m_camera->GetViewMatrix()),
             XMLoadFloat4x4(&m_camera->GetProjectionMatrix()),
             m_camera->GetPosition(),
@@ -209,7 +207,7 @@ void GammaEngine::Render() {
             m_camera->GetFrustum(), renderDistSq, m_enableCulling);
     }
 
-    // --- Pass 3: Debug GUI ---
+    // --- Debug GUI ---
     DebugOverlay::Stats stats;
     stats.camPos = m_camera->GetPosition();
     stats.renderDist = m_renderDistance;

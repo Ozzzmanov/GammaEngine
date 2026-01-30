@@ -31,6 +31,15 @@ struct BlendHeader {
 };
 #pragma pack(pop)
 
+#pragma pack(push, 1)
+struct HolesHeader {
+    uint32_t magic_;
+    uint32_t width_;
+    uint32_t height_;
+    uint32_t version_;
+};
+#pragma pack(pop)
+
 // Структура для CPU (временная, только для загрузки)
 struct TerrainLayer {
     std::string textureName;
@@ -85,6 +94,9 @@ private:
     ComPtr<ID3D11Device>        m_device;
     ComPtr<ID3D11DeviceContext> m_context;
 
+    // Holes
+    void LoadHoles(const std::vector<char>& fileData);
+
     // Geometry
     ComPtr<ID3D11Buffer> m_vertexBuffer;
     ComPtr<ID3D11Buffer> m_indexBuffer;
@@ -99,6 +111,10 @@ private:
 
     // Constant Buffer (Static)
     ComPtr<ID3D11Buffer> m_layerBuffer;
+
+    // Holes
+    ComPtr<ID3D11Texture2D>          m_holeTexture;
+    ComPtr<ID3D11ShaderResourceView> m_holeTextureView;
 
     std::vector<float> m_heightMap;
     UINT  m_width = 0;

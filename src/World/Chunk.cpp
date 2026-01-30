@@ -38,9 +38,6 @@ bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
     m_gridZ = gridZ;
     m_position = DirectX::XMFLOAT3(gridX * 100.0f + 50.0f, 0.0f, gridZ * 100.0f + 50.0f);
 
-    // --- ОПТИМИЗАЦИЯ: Создаем BoundingBox ---
-    // Чанк 100x100м. Центр в m_position. Высоту берем с запасом (-500 до +500), 
-    // чтобы горы не обрезались. В идеале брать min/max из HeightMap.
     m_boundingBox.Center = m_position;
     m_boundingBox.Extents = DirectX::XMFLOAT3(50.0f, 500.0f, 50.0f);
 
@@ -56,7 +53,9 @@ bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
     PreScanForWater(buffer);
 
     auto root = BwPackedSection::Create(buffer.data(), size);
-    if (root) ScanForVLOs(root);
+    if (root) {
+        ScanForVLOs(root);       // Поиск воды
+    }
 
     fs::path cdataPath = fs::path(chunkFilePath).replace_extension(".cdata");
     if (fs::exists(cdataPath)) {
@@ -125,7 +124,6 @@ void Chunk::RecursiveVloScan(std::shared_ptr<BwPackedSection> section, std::vect
         if (isVloContainer) {
             ChunkVloInfo info;
             info.type = (tagName == "water") ? "water" : "";
-            // Теперь эти поля существуют
             info.hasPosition = false;
             info.hasScale = false;
 
@@ -181,37 +179,43 @@ bool Chunk::Render(ConstantBuffer<CB_VS_Transform>* cb,
     float renderDistanceSq,
     bool checkVisibility)
 {
-    if (!m_terrain) return false;
-
+    // Отсечение целого Чанка (Chunk Culling)
     if (checkVisibility) {
-        // Distance Culling (Круговая проверка)
-        // Считаем расстояние от камеры до центра чанка (в плоскости XZ, высоту можно игнорировать для скорости)
         float dx = m_position.x - camPos.x;
         float dz = m_position.z - camPos.z;
         float distSq = dx * dx + dz * dz;
 
-        // Если чанк дальше лимита — не рисуем
+        // Если чанк слишком далеко — не рисуем ничего
         if (distSq > renderDistanceSq) return false;
 
-        // 2. Frustum Culling (Пирамида)
-        // Проверяем BoundingBox
+        // Проверка пирамиды видимости (Frustum Culling) по BoundingBox чанка
         if (!cameraFrustum.Intersects(m_boundingBox)) {
             return false;
         }
     }
 
-    // --- ОТРИСОВКА ---
-    DirectX::XMMATRIX world = DirectX::XMMatrixTranslation(m_position.x, m_position.y, m_position.z);
+    bool drawnSomething = false;
 
-    CB_VS_Transform data;
-    data.World = DirectX::XMMatrixTranspose(world);
-    data.View = DirectX::XMMatrixTranspose(view);
-    data.Projection = DirectX::XMMatrixTranspose(proj);
+    DirectX::XMMATRIX viewT = DirectX::XMMatrixTranspose(view);
+    DirectX::XMMATRIX projT = DirectX::XMMatrixTranspose(proj);
 
-    // Используем UpdateDynamic для скорости (Map/Unmap вместо UpdateSubresource)
-    cb->UpdateDynamic(data);
-    cb->BindVS(0);
+    // ---------------------------------------------------------
+    // Рендер Ландшафта (Terrain)
+    // ---------------------------------------------------------
+    if (m_terrain) {
+        DirectX::XMMATRIX terrainWorld = DirectX::XMMatrixTranslation(m_position.x, m_position.y, m_position.z);
 
-    m_terrain->Render();
-    return true;
+        CB_VS_Transform data;
+        data.World = DirectX::XMMatrixTranspose(terrainWorld);
+        data.View = viewT;
+        data.Projection = projT;
+
+        cb->UpdateDynamic(data);
+        cb->BindVS(0);
+
+        m_terrain->Render();
+        drawnSomething = true;
+    }
+
+    return drawnSomething;
 }

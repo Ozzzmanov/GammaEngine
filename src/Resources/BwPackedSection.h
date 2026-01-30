@@ -8,7 +8,6 @@
 // ================================================================================
 // BwPackedSection.h
 // Парсер упакованного XML формата BigWorld (*.o, *.chunk, .vlo).
-// Структура рекурсивная.
 // ================================================================================
 
 #pragma once
@@ -32,7 +31,7 @@ public:
 
     std::string GetName() const { return m_name; }
 
-    // Возвращает строковое представление значения (парсит бинарные данные)
+    // Возвращает строковое представление значения
     std::string GetValueAsString() const;
 
     // Прямой доступ к вектору (если тип FLOAT, size=12)
@@ -44,6 +43,8 @@ public:
 
     const std::vector<uint8_t>& GetBlob() const { return m_data; }
     const std::vector<std::shared_ptr<BwPackedSection>>& GetChildren() const { return m_children; }
+
+    DirectX::XMFLOAT4X4 AsMatrix();
 
 private:
     BwPackedSection() = default;

@@ -7,12 +7,12 @@
 //
 // ================================================================================
 // BwPackedSection.cpp
-// Оптимизированный поиск GUID без лишних аллокаций.
 // ================================================================================
 
 #include "BwPackedSection.h"
 #include "../Core/Logger.h"
 #include <iomanip>
+#include <DirectXMath.h>
 
 // --- Хелпер для проверки валидности символов GUID ---
 static inline bool IsGuidChar(uint8_t c) {
@@ -31,15 +31,10 @@ std::string BwPackedSection::ExtractWaterGUID(const std::vector<uint8_t>& blob) 
     const uint8_t* data = blob.data();
     size_t size = blob.size();
 
-    // Ищем паттерн "water"
-    // "water" is 5 chars. We need at least 35 chars before it.
-    // So loop starts at 35 and goes up to size - 5.
     for (size_t i = 35; i <= size - 5; ++i) {
         if (data[i] == 'w' && data[i + 1] == 'a' && data[i + 2] == 't' && data[i + 3] == 'e' && data[i + 4] == 'r') {
 
-            // Нашли "water". Проверяем 35 байт ПЕРЕД ним на соответствие структуре GUID
-            // GUID формат BigWorld: XXXXXXXX.XXXXXXXX.XXXXXXXX.XXXXXXXX (35 символов)
-
+ 
             size_t start = i - 35;
             int dots = 0;
             bool valid = true;
@@ -61,6 +56,32 @@ std::string BwPackedSection::ExtractWaterGUID(const std::vector<uint8_t>& blob) 
         }
     }
     return "";
+}
+
+DirectX::XMFLOAT4X4 BwPackedSection::AsMatrix() {
+    DirectX::XMFLOAT4X4 result;
+    // Инициализируем единичной матрицей
+    DirectX::XMStoreFloat4x4(&result, DirectX::XMMatrixIdentity());
+
+    // BigWorld хранит матрицу как 4 строки по 3 float (Row-Major) или 4x4
+    // Обычно в чанках это 48 байт: 
+    // Row0 (Right), Row1 (Up), Row2 (Forward), Row3 (Position)
+
+    if (m_data.size() == 48) { // 12 floats
+        const float* f = reinterpret_cast<const float*>(m_data.data());
+
+        // В BigWorld порядок строк совпадает с DirectX Row-Major
+        result._11 = f[0]; result._12 = f[1]; result._13 = f[2]; result._14 = 0.0f;
+        result._21 = f[3]; result._22 = f[4]; result._23 = f[5]; result._24 = 0.0f;
+        result._31 = f[6]; result._32 = f[7]; result._33 = f[8]; result._34 = 0.0f;
+        result._41 = f[9]; result._42 = f[10]; result._43 = f[11]; result._44 = 1.0f;
+    }
+    else if (m_data.size() == 64) { // 16 floats (редко, но бывает)
+        const float* f = reinterpret_cast<const float*>(m_data.data());
+        memcpy(&result, f, 64);
+    }
+
+    return result;
 }
 
 std::string BwPackedSection::ExtractGUID(const std::vector<uint8_t>& blob) {
@@ -164,7 +185,7 @@ bool BwPackedSection::Load(const char* unused, const char* recordsStart, int num
             if (length > 0 && (childDataPtr + length <= fileEnd)) {
                 child->m_data.assign(childDataPtr, childDataPtr + length);
             }
-            // Маппинг типов BigWorld на наши типы
+            // Маппинг типов BigWorld
             if (bwType == 0x1) child->m_type = TYPE_STRING;
             else if (bwType == 0x2) child->m_type = TYPE_INT;
             else if (bwType == 0x3) child->m_type = TYPE_FLOAT;

@@ -102,6 +102,9 @@
     <ClCompile Include="src\World\WorldLoader.cpp">
       <Filter>src\World</Filter>
     </ClCompile>
+    <ClCompile Include="src\Graphics\StaticModel.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\World\Chunk.h">
@@ -187,6 +190,9 @@
     </ClInclude>
     <ClInclude Include="src\World\WorldLoader.h">
       <Filter>src\World</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\StaticModel.h">
+      <Filter>src\Graphics</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
