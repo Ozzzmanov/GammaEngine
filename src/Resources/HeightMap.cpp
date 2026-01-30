@@ -16,7 +16,7 @@
 // Формат заголовка QPNG (BigWorld Internal Format)
 #pragma pack(push, 1)
 struct HeightMapHeader {
-    uint32_t magic;      
+    uint32_t magic;
     uint32_t compression;
     uint32_t width;
     uint32_t height;

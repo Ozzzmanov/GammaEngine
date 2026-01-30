@@ -20,16 +20,19 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Core\DataSection.cpp" />
+    <ClCompile Include="src\Core\InputSystem.cpp" />
     <ClCompile Include="src\Core\Logger.cpp" />
     <ClCompile Include="src\Core\ResourceManager.cpp" />
     <ClCompile Include="src\Core\Timer.cpp" />
     <ClCompile Include="src\Core\Window.cpp" />
     <ClCompile Include="src\GammaEngine.cpp" />
+    <ClCompile Include="src\Graphics\Camera.cpp" />
     <ClCompile Include="src\Graphics\DDSTextureLoader.cpp" />
     <ClCompile Include="src\Graphics\DX11Renderer.cpp" />
     <ClCompile Include="src\Graphics\LevelTextureManager.cpp" />
     <ClCompile Include="src\Graphics\Shader.cpp" />
     <ClCompile Include="src\Graphics\TextureArray.cpp" />
+    <ClCompile Include="src\GUI\DebugOverlay.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Resources\BwBinSection.cpp" />
     <ClCompile Include="src\Resources\BwPackedSection.cpp" />
@@ -42,21 +45,25 @@
     <ClCompile Include="src\World\Terrain.cpp" />
     <ClCompile Include="src\World\VegetationManager.cpp" />
     <ClCompile Include="src\World\WaterVLO.cpp" />
+    <ClCompile Include="src\World\WorldLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Core\DataSection.h" />
+    <ClInclude Include="src\Core\InputSystem.h" />
     <ClInclude Include="src\Core\Logger.h" />
     <ClInclude Include="src\Core\Prerequisites.h" />
     <ClInclude Include="src\Core\ResourceManager.h" />
     <ClInclude Include="src\Core\Timer.h" />
     <ClInclude Include="src\Core\Window.h" />
     <ClInclude Include="src\GammaEngine.h" />
+    <ClInclude Include="src\Graphics\Camera.h" />
     <ClInclude Include="src\Graphics\ConstantBuffer.h" />
     <ClInclude Include="src\Graphics\DDSTextureLoader.h" />
     <ClInclude Include="src\Graphics\DX11Renderer.h" />
     <ClInclude Include="src\Graphics\LevelTextureManager.h" />
     <ClInclude Include="src\Graphics\Shader.h" />
     <ClInclude Include="src\Graphics\TextureArray.h" />
+    <ClInclude Include="src\GUI\DebugOverlay.h" />
     <ClInclude Include="src\Resources\BwBinSection.h" />
     <ClInclude Include="src\Resources\BwPackedSection.h" />
     <ClInclude Include="src\Resources\DebugTools.h" />
@@ -68,6 +75,7 @@
     <ClInclude Include="src\World\Terrain.h" />
     <ClInclude Include="src\World\VegetationManager.h" />
     <ClInclude Include="src\World\WaterVLO.h" />
+    <ClInclude Include="src\World\WorldLoader.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

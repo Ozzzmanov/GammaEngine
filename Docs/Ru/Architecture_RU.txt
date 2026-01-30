@@ -6,15 +6,16 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 
 ================================================================================
-GAMMA ENGINE: АРХИТЕКТУРА ПРОЕКТА (UPDATED)
+GAMMA ENGINE: АРХИТЕКТУРА ПРОЕКТА
 ================================================================================
 
 ROOT DIRECTORY
-|-- GammaEngine.h/cpp       # Точка входа в движок. Main Loop и управление системами.
+|-- GammaEngine.h/cpp       # Точка входа в движок. Оркестратор подсистем.
 |-- Main.cpp                # Entry point (main), инициализация глобального логгера.
 
 SRC/CORE/ (Базовые системы)
 |-- Window.h/cpp            # Обертка над WinAPI.
+|-- InputSystem.h/cpp       # Управление вводом (Action Mapping, Mouse/Keyboard).
 |-- Timer.h/cpp             # Таймер со сглаживанием (Smoothing) для плавной физики.
 |-- Logger.h/cpp            # Асинхронный логгер (Thread-safe, Console + File).
 |-- DataSection.h/cpp       # Универсальный парсер данных (XML/Binary) с защитой локали.
@@ -22,12 +23,17 @@ SRC/CORE/ (Базовые системы)
 
 SRC/GRAPHICS/ (Рендеринг)
 |-- DX11Renderer.h/cpp      # Инициализация DirectX 11.
+|-- Camera.h/cpp            # Матрицы вида/проекции, Frustum Culling, управление.
 |-- Shader.h/cpp            # Управление шейдерами и InputLayout.
 |-- TextureArray.h/cpp      # Массивы текстур для террейна.
 |-- ConstantBuffer.h        # Управление буферами (Static/Dynamic Update).
 |-- LevelTextureManager.h   # Реестр текстур уровня.
 
+SRC/GUI/ (Интерфейс пользователя)
+|-- DebugOverlay.h/cpp      # Оверлей статистики и отладки (DirectXTK).
+
 SRC/WORLD/ (Мир и Логика)
+|-- WorldLoader.h/cpp       # Загрузка локаций, сканирование чанков и VLO.
 |-- Chunk.h/cpp             # Единица мира. Frustum Culling, Distance Culling.
 |-- Terrain.h/cpp           # Ландшафт: Dual Blend Maps, геометрия.
 |-- WaterVLO.h/cpp          # Система воды: рендеринг, физика волн, VLO.

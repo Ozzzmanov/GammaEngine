@@ -6,15 +6,16 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 
 ================================================================================
-GAMMA ENGINE: PROJECT ARCHITECTURE (UPDATED)
+GAMMA ENGINE: PROJECT ARCHITECTURE
 ================================================================================
 
 ROOT DIRECTORY
-|-- GammaEngine.h/cpp       # Engine entry point. System management and Main Loop.
+|-- GammaEngine.h/cpp       # Engine entry point. System orchestration & Main Loop.
 |-- Main.cpp                # Application entry point, global logger setup.
 
 SRC/CORE/ (Base Systems)
 |-- Window.h/cpp            # WinAPI wrapper.
+|-- InputSystem.h/cpp       # Input management (Action Mapping, Mouse/Keyboard).
 |-- Timer.h/cpp             # High-precision timer with delta smoothing.
 |-- Logger.h/cpp            # Asynchronous, thread-safe logger (Console + File).
 |-- DataSection.h/cpp       # Universal data parser (XML/Binary) with locale safety.
@@ -22,15 +23,20 @@ SRC/CORE/ (Base Systems)
 
 SRC/GRAPHICS/ (Rendering)
 |-- DX11Renderer.h/cpp      # DirectX 11 initialization.
+|-- Camera.h/cpp            # View/Proj matrices, Frustum Culling, movement logic.
 |-- Shader.h/cpp            # HLSL shader management.
 |-- TextureArray.h/cpp      # Texture arrays for terrain.
 |-- ConstantBuffer.h        # Buffer management (Static/Dynamic updates).
 |-- LevelTextureManager.h   # Level texture registry.
 
+SRC/GUI/ (User Interface)
+|-- DebugOverlay.h/cpp      # Debug statistics and UI overlay (DirectXTK).
+
 SRC/WORLD/ (World & Logic)
+|-- WorldLoader.h/cpp       # Scene loading, chunk scanning, and VLO spawning.
 |-- Chunk.h/cpp             # World unit. Frustum & Distance Culling logic.
 |-- Terrain.h/cpp           # Landscape: Dual Blend Maps, geometry generation.
-|-- WaterVLO.h/cpp          # [NEW] Water system: rendering, wave physics, VLO.
+|-- WaterVLO.h/cpp          # Water system: rendering, wave physics, VLO.
 
 SRC/RESOURCES/ (File Handling)
 |-- BwPackedSection.h/cpp   # BigWorld binary section parser.

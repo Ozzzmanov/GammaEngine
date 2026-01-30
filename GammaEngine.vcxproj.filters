@@ -16,6 +16,9 @@
     <Filter Include="src\World">
       <UniqueIdentifier>{fea6d04f-3ec6-479f-aab0-c8734f21149f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\GUI">
+      <UniqueIdentifier>{648009de-9cd6-42fd-a5db-d99b6ec407ac}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -86,6 +89,18 @@
     </ClCompile>
     <ClCompile Include="src\Core\Logger.cpp">
       <Filter>src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\InputSystem.cpp">
+      <Filter>src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\Camera.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\GUI\DebugOverlay.cpp">
+      <Filter>src\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="src\World\WorldLoader.cpp">
+      <Filter>src\World</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -160,6 +175,18 @@
     </ClInclude>
     <ClInclude Include="src\Resources\DebugTools.h">
       <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\InputSystem.h">
+      <Filter>src\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\Camera.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\GUI\DebugOverlay.h">
+      <Filter>src\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="src\World\WorldLoader.h">
+      <Filter>src\World</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
