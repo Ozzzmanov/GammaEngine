@@ -17,6 +17,7 @@
 #include <string>
 #include <memory>
 #include <DirectXCollision.h>
+#include "../Graphics/Texture.h"
 
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
@@ -45,7 +46,7 @@ public:
     bool Load(const std::string& vloPath);
     void LoadDefaults(const std::string& uid);
 
-    // Оптимизированный рендер с проверкой видимости
+    // рендер с проверкой видимости
     void Render(const Matrix& view, const Matrix& proj,
         const Vector3& camPos, float time,
         ConstantBuffer<CB_VS_Transform>* transformBuffer,
@@ -112,7 +113,8 @@ private:
     UINT m_indexCount = 0;
     std::unique_ptr<Shader> m_shader;
     ComPtr<ID3D11InputLayout> m_inputLayout;
-    ComPtr<ID3D11ShaderResourceView> m_waveMap, m_skyMap;
+    std::shared_ptr<Texture> m_waveMap;
+    std::shared_ptr<Texture> m_skyMap;
     std::unique_ptr<ConstantBuffer<WaterConstants>> m_cbWater;
     ComPtr<ID3D11BlendState> m_blendState;
     ComPtr<ID3D11SamplerState> m_samplerState;

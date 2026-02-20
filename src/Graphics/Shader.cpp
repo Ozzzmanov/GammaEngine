@@ -4,7 +4,6 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
-//
 // ================================================================================
 // Shader.cpp
 // ================================================================================
@@ -44,9 +43,21 @@ bool Shader::Load(const std::wstring& filename) {
         Logger::Warn(LogCategory::Render, "Default Layout mismatch. Shader might use custom layout.");
     }
 
-    // Sampler State
     D3D11_SAMPLER_DESC sampDesc = {};
-    sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+
+    // ВКЛЮЧАЕМ АНИЗОТРОПИЮ
+    // Вместо обычного LINEAR фильтра используем ANISOTROPIC. FIXME Вынести в конфиг
+    sampDesc.Filter = D3D11_FILTER_ANISOTROPIC;
+
+    // Максимальное качество анизотропии (стандарт 16)
+    sampDesc.MaxAnisotropy = 16;
+
+    // УЛУЧШАЕМ ЧЕТКОСТЬ (MIP BIAS)
+    // Сдвигаем уровень мип-мапов. Значение -0.5 заставляет видеокарту 
+    // использовать более детальные текстуры чуть дальше от камеры.
+    // Это делает картинку "звенящей" и четкой.
+    sampDesc.MipLODBias = -0.5f;
+
     sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
     sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
     sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;

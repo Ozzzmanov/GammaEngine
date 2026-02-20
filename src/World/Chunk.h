@@ -11,27 +11,29 @@
 
 #pragma once
 #include "../Core/Prerequisites.h"
-#include "../Graphics/ConstantBuffer.h"
 #include <DirectXCollision.h>
+#include <vector>
+#include <memory>
+#include <string>
 
 class Terrain;
 class BwPackedSection;
 class LevelTextureManager;
-class VegetationManager;
 struct SpaceParams;
 
-
-// Структура для передачи данных о воде
 struct ChunkVloInfo {
-    std::string uid;
-    std::string type;
-
+    std::string uid, type;
     DirectX::XMFLOAT3 position = { 0,0,0 };
     DirectX::XMFLOAT3 scale = { 1,1,1 };
+    bool hasPosition = false, hasScale = false;
+};
 
-    // Флаги, указывающие, были ли эти данные найдены в файле
-    bool hasPosition = false;
-    bool hasScale = false;
+// Структура для хранения распаршенных данных модели
+struct ParsedStaticEntity {
+    std::string ModelPath;
+    DirectX::XMFLOAT3 Position;
+    DirectX::XMFLOAT3 Scale;
+    DirectX::XMFLOAT3 RotXYZ;
 };
 
 class Chunk {
@@ -40,39 +42,40 @@ public:
     ~Chunk();
 
     bool Load(const std::string& chunkFilePath, int gridX, int gridZ,
-        const SpaceParams& params,
-        LevelTextureManager* texMgr,
-        VegetationManager* vegMgr,
-        bool onlyScan);
+        const SpaceParams& params, LevelTextureManager* texMgr);
 
-    bool Render(ConstantBuffer<CB_VS_Transform>* cb,
-        const DirectX::XMMATRIX& view,
-        const DirectX::XMMATRIX& proj,
-        const DirectX::BoundingFrustum& cameraFrustum,
-        const DirectX::XMFLOAT3& camPos, // Позиция камеры
-        float renderDistanceSq,          // Дистанция в квадрате
-        bool checkVisibility);
+    DirectX::XMFLOAT3 GetPosition() const { return m_boundingBox.Center; }
+    const DirectX::BoundingBox& GetBoundingBox() const { return m_boundingBox; }
 
-    // Возвращаем указатель на Terrain для манипуляций в WorldLoader
+    bool IsInFrustum(const DirectX::BoundingFrustum& frustum) const {
+        return frustum.Intersects(m_boundingBox);
+    }
+
     Terrain* GetTerrain() const { return m_terrain.get(); }
+
+    void SetArraySlice(int slice) { m_arraySlice = slice; }
+    int GetArraySlice() const { return m_arraySlice; }
+
+    //Отдаем собранные данные наружу
+    const std::vector<ParsedStaticEntity>& GetStaticEntities() const { return m_staticEntities; }
 
 private:
     void PreScanForWater(const std::vector<char>& buffer);
     void ScanForVLOs(std::shared_ptr<BwPackedSection> root);
-    void RecursiveVloScan(std::shared_ptr<BwPackedSection> section,
-        std::vector<ChunkVloInfo>& outInfos);
+    void ScanForModels(std::shared_ptr<BwPackedSection> root);
+    void RecursiveVloScan(std::shared_ptr<BwPackedSection> section, std::vector<ChunkVloInfo>& outInfos);
 
-private:
     ID3D11Device* m_device;
     ID3D11DeviceContext* m_context;
 
-    std::string          m_chunkName;
-    int                  m_gridX = 0;
-    int                  m_gridZ = 0;
-    DirectX::XMFLOAT3    m_position = { 0, 0, 0 };
-
-    // Границы чанка для Frustum Culling
+    std::string m_chunkName;
+    int m_gridX = 0, m_gridZ = 0;
+    DirectX::XMFLOAT3 m_position = { 0,0,0 };
     DirectX::BoundingBox m_boundingBox;
 
     std::unique_ptr<Terrain> m_terrain;
+    int m_arraySlice = -1;
+
+    // Хранилище сущностей
+    std::vector<ParsedStaticEntity> m_staticEntities;
 };

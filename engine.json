@@ -1,0 +1,64 @@
+{
+  "System": {
+    "WindowWidth": 1920,
+    "WindowHeight": 1080,
+    "WindowTitle": "Gamma Engine",
+    "Windowed": true,
+    "VSync": false
+  },
+  "Textures": {
+    "MaxResolution": 4096,
+    "UseBC7Compression": false,
+    "ForceAnisotropy": 16,
+    "TerrainTextureSize": 1024,
+    "UseTextureArrays": false
+  },
+  "Logging": {
+    "Render": true,
+    "Texture": true,
+    "Terrain": true,
+    "Physics": true,
+    "System": true
+  },
+  "Graphics": {
+    "RenderDistance": 2000.0,
+    "FOV": 45.0,
+    "NearZ": 0.1,
+    "FarZ": 10000.0,
+    "AnisotropyLevel": 16,
+    "MipLODBias": -0.5,
+    "LOD": {
+      "Enabled": true,
+      "Distance1": 100.0,
+      "Distance2": 250.0,
+      "Distance3": 1000.0
+    }
+  },
+  "Optimization": {
+    "EnableOcclusionCulling": true,
+    "EnableFrustumCulling": true,
+    "EnableSizeCulling": true,
+    "MinPixelSize": 5.0,
+    "OcclusionAlgorithm": "HZB",
+    "UseStaticBatching": true,
+    "EnableZPrepass": false
+  },
+  "Input": {
+    "MouseSensitivity": 0.003,
+    "InvertY": false,
+    "MoveForward": "W",
+    "MoveBackward": "S",
+    "MoveLeft": "A",
+    "MoveRight": "D",
+    "FlyUp": "E",
+    "FlyDown": "Q",
+    "Sprint": "VK_SHIFT",
+    "ToggleCulling": "VK_F1",
+    "ToggleDebugCam": "VK_F2",
+    "ToggleLODs": "VK_F3",
+    "ToggleHZB": "VK_F4",
+    "ToggleWireframe": "VK_TAB",
+    "RenderDistUp": "X",
+    "RenderDistDown": "Z"
+  }
+}

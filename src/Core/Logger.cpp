@@ -117,10 +117,10 @@ void Logger::WorkerThread() {
 
         std::string finalStr = ss.str();
 
-        // Вывод в VS Output Window (Очень удобно для отладки)
+        // Вывод в VS Output Window
         OutputDebugStringA(finalStr.c_str());
 
-        // Вывод в стандартную консоль (если есть)
+        // Вывод в стандартную консоль 
         std::cout << finalStr;
 
         // Вывод в файл

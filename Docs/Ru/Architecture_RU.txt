@@ -6,41 +6,57 @@
  ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 
 ================================================================================
-GAMMA ENGINE: АРХИТЕКТУРА ПРОЕКТА
+GAMMA ENGINE: АРХИТЕКТУРА ПРОЕКТА 4.0
 ================================================================================
 
 ROOT DIRECTORY
-|-- GammaEngine.h/cpp       # Точка входа в движок. Оркестратор подсистем.
-|-- Main.cpp                # Entry point (main), инициализация глобального логгера.
+|-- GammaEngine.h/cpp       # Ядро движка. Оркестратор жизненного цикла подсистем.
+|-- Main.cpp                # Точка входа, инициализация базовых сервисов.
+
+SRC/CONFIG/ (Конфигурация)
+|-- EngineConfig.h/cpp      # Глобальные настройки движка и парсинг параметров запуска.
 
 SRC/CORE/ (Базовые системы)
-|-- Window.h/cpp            # Обертка над WinAPI.
-|-- InputSystem.h/cpp       # Управление вводом (Action Mapping, Mouse/Keyboard).
-|-- Timer.h/cpp             # Таймер со сглаживанием (Smoothing) для плавной физики.
-|-- Logger.h/cpp            # Асинхронный логгер (Thread-safe, Console + File).
-|-- DataSection.h/cpp       # Универсальный парсер данных (XML/Binary) с защитой локали.
-|-- Prerequisites.h         # Глобальные настройки и макросы.
+|-- Window.h/cpp            # Обертка над WinAPI и управление контекстом окна.
+|-- InputSystem.h/cpp       # Обработка ввода (Action Mapping, Raw Input).
+|-- TaskScheduler.h/cpp     # Многопоточность: планировщик задач и Worker Threads.
+|-- ResourceManager.h/cpp    # Глобальный менеджер и кэш ресурсов.
+|-- Timer.h/cpp             # Высокоточный таймер с логикой сглаживания кадров.
+|-- Logger.h/cpp            # Потокобезопасное логирование (Консоль/Файл).
+|-- DataSection.h/cpp       # Базовый интерфейс для работы со структурами данных.
+|-- Prerequisites.h         # Предварительные определения, макросы и типы.
 
-SRC/GRAPHICS/ (Рендеринг)
-|-- DX11Renderer.h/cpp      # Инициализация DirectX 11.
-|-- Camera.h/cpp            # Матрицы вида/проекции, Frustum Culling, управление.
-|-- Shader.h/cpp            # Управление шейдерами и InputLayout.
-|-- TextureArray.h/cpp      # Массивы текстур для террейна.
-|-- ConstantBuffer.h        # Управление буферами (Static/Dynamic Update).
-|-- LevelTextureManager.h   # Реестр текстур уровня.
-
-SRC/GUI/ (Интерфейс пользователя)
-|-- DebugOverlay.h/cpp      # Оверлей статистики и отладки (DirectXTK).
+SRC/GRAPHICS/ (Рендеринг и GPU-пайплайн)
+|-- DX11Renderer.h/cpp      # Низкоуровневый API (DirectX 11 Device/Context).
+|-- RenderPipeline.h/cpp    # Управление этапами отрисовки кадров.
+|-- RenderTarget.h/cpp      # Управление буферами рендеринга и G-Buffer.
+|-- GpuCullingSystem.h/cpp  # GPU-фрустум и окклюжн куллинг.
+|-- HzbManager.h/cpp        # Иерархический Z-буфер для ускорения куллинга.
+|-- StaticGpuScene.h/cpp    # Система GPU-driven отрисовки статических объектов.
+|-- TerrainGpuScene.h/cpp   # GPU-репрезентация ландшафта.
+|-- ComputeShader.h/cpp     # Обертка над вычислительными шейдерами.
+|-- Camera.h/cpp            # Камера, матрицы и Frustum-логика.
+|-- ShaderManager.h/cpp     # Реестр и автоматическая компиляция шейдеров.
+|-- ConstantBuffer.h        # Шаблоны управления константными буферами.
+|-- Texture/TextureArray.h  # Работа с одиночными текстурами и массивами.
+|-- GpuTypes.h              # Общие структуры данных для CPU и GPU.
 
 SRC/WORLD/ (Мир и Логика)
-|-- WorldLoader.h/cpp       # Загрузка локаций, сканирование чанков и VLO.
-|-- Chunk.h/cpp             # Единица мира. Frustum Culling, Distance Culling.
-|-- Terrain.h/cpp           # Ландшафт: Dual Blend Maps, геометрия.
-|-- WaterVLO.h/cpp          # Система воды: рендеринг, физика волн, VLO.
+|-- WorldLoader.h/cpp       # Асинхронная загрузка игровых пространств.
+|-- Chunk.h/cpp             # Сектор мира: управление объектами и LOD.
+|-- Terrain.h/cpp           # Визуализация и коллизии ландшафта.
+|-- WaterVLO.h/cpp          # Система воды (Very Large Object).
 
-SRC/RESOURCES/ (Файловая система)
-|-- BwPackedSection.h/cpp   # Парсер бинарных секций BigWorld.
-|-- BwBinSection.h/cpp      # Парсер *.odata (оптимизированный).
-|-- HeightMap.h/cpp         # Декодер QPNG высот и нормалей.
-|-- SpaceSettings.h/cpp     # Настройки мира (space.settings).
-|-- DebugTools.h/cpp        # Инструменты анализа форматов (Reverse Engineering).
+SRC/RESOURCES/ (Работа с данными и форматами)
+|-- TerrainBaker.h/cpp      # Инструмент запекания данных террейна.
+|-- TerrainAtlasManager.h   # Генерация и управление атласами текстур земли.
+|-- TerrainArrayManager.h   # Управление массивами слоев ландшафта.
+|-- BwPackedSection.h/cpp   # Парсер бинарных XML/KV секций (BigWorld format).
+|-- BwBinSection.h/cpp      # Обработка .odata и геометрии.
+|-- HeightMap.h/cpp         # Декодирование карт высот.
+|-- SpaceSettings.h/cpp     # Конфигурация параметров пространства (space.settings).
+|-- StbImageImpl.cpp        # Реализация загрузки изображений (stb_image).
+|-- tiny_gltf.h / json.hpp  # Поддержка форматов GLTF и JSON.
+
+SRC/GUI/ (Интерфейс)
+|-- DebugOverlay.h/cpp      # Инструменты мониторинга производительности и отладки.

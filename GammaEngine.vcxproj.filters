@@ -19,6 +19,9 @@
     <Filter Include="src\GUI">
       <UniqueIdentifier>{648009de-9cd6-42fd-a5db-d99b6ec407ac}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\Config">
+      <UniqueIdentifier>{682632b0-c01e-40f5-845e-c9c7c997adeb}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -78,12 +81,6 @@
     <ClCompile Include="src\Resources\BwBinSection.cpp">
       <Filter>src\Resources</Filter>
     </ClCompile>
-    <ClCompile Include="src\World\VegetationManager.cpp">
-      <Filter>src\World</Filter>
-    </ClCompile>
-    <ClCompile Include="src\World\SpeedTreeLoader.cpp">
-      <Filter>src\World</Filter>
-    </ClCompile>
     <ClCompile Include="src\Resources\DebugTools.cpp">
       <Filter>src\Resources</Filter>
     </ClCompile>
@@ -103,6 +100,48 @@
       <Filter>src\World</Filter>
     </ClCompile>
     <ClCompile Include="src\Graphics\StaticModel.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\ModelManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\ShaderManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\TaskScheduler.cpp">
+      <Filter>src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\ComputeShader.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\HzbManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\GpuCullingSystem.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Config\EngineConfig.cpp">
+      <Filter>src\Config</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\StaticGpuScene.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\TerrainBaker.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\TerrainAtlasManager.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\TerrainGpuScene.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\TerrainArrayManager.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\RenderPipeline.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\RenderTarget.cpp">
       <Filter>src\Graphics</Filter>
     </ClCompile>
   </ItemGroup>
@@ -170,12 +209,6 @@
     <ClInclude Include="src\Resources\BwBinSection.h">
       <Filter>src\Resources</Filter>
     </ClInclude>
-    <ClInclude Include="src\World\VegetationManager.h">
-      <Filter>src\World</Filter>
-    </ClInclude>
-    <ClInclude Include="src\World\SpeedTreeLoader.h">
-      <Filter>src\World</Filter>
-    </ClInclude>
     <ClInclude Include="src\Resources\DebugTools.h">
       <Filter>src\Resources</Filter>
     </ClInclude>
@@ -188,10 +221,67 @@
     <ClInclude Include="src\GUI\DebugOverlay.h">
       <Filter>src\GUI</Filter>
     </ClInclude>
+    <ClInclude Include="src\Graphics\StaticModel.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\ModelManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\ShaderManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\json.hpp">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\tiny_gltf.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\stb_image_write.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\TaskScheduler.h">
+      <Filter>src\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\Texture.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\ComputeShader.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\HzbManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\GpuTypes.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\GpuCullingSystem.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Config\EngineConfig.h">
+      <Filter>src\Config</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\StaticGpuScene.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
     <ClInclude Include="src\World\WorldLoader.h">
       <Filter>src\World</Filter>
     </ClInclude>
-    <ClInclude Include="src\Graphics\StaticModel.h">
+    <ClInclude Include="src\Resources\TerrainBaker.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\TerrainAtlasManager.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\TerrainGpuScene.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\TerrainArrayManager.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\RenderPipeline.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\RenderTarget.h">
       <Filter>src\Graphics</Filter>
     </ClInclude>
   </ItemGroup>

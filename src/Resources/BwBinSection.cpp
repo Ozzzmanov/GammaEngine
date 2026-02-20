@@ -15,6 +15,22 @@
 
 static const uint32_t BIN_SECTION_MAGIC = 0x42a14e65; // eNЎB
 
+static std::string FormatSectionName(const std::string& name) {
+    bool isBinary = false;
+    for (unsigned char c : name) {
+        if (c < 32 || c > 126) isBinary = true;
+    }
+
+    if (!isBinary) return "'" + name + "'";
+
+    std::stringstream ss;
+    ss << "[HEX]";
+    for (unsigned char c : name) {
+        ss << " " << std::hex << std::setw(2) << std::setfill('0') << (int)c;
+    }
+    return ss.str();
+}
+
 std::shared_ptr<BwBinSection> BwBinSection::Create(const char* data, size_t len) {
     if (len < 12) return nullptr;
 
@@ -78,7 +94,7 @@ bool BwBinSection::GetSectionData(const std::string& name, std::vector<uint8_t>&
 
     const auto& entry = it->second;
 
-    // Проверка границ (на всякий случай)
+    // Проверка границ
     if (entry.offset + entry.length > m_storage.size()) {
         Logger::Error(LogCategory::System, "BwBinSection: Section read out of bounds.");
         return false;

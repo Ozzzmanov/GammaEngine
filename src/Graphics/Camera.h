@@ -7,7 +7,7 @@
 //
 // ================================================================================
 // Camera.h
-// Управление камерой, матрицами вида/проекции и Frustum Culling.
+// Управление камерой, матрицами вида/проекции.
 // ================================================================================
 
 #pragma once
@@ -35,11 +35,12 @@ public:
 
     // Для Frustum Culling
     const DirectX::BoundingFrustum& GetFrustum() const { return m_frustum; }
-    DirectX::XMFLOAT3 GetCullOrigin() const { return m_cullOrigin; } // Позиция для расчета дистанции
+    DirectX::XMFLOAT3 GetCullOrigin() const { return m_cullOrigin; } // Позиция для расчета дистанции FIX ME Расчет на GPU.
 
     // Управление режимом отладки (заморозка Frustum)
     void ToggleDebugMode();
     bool IsDebugMode() const { return m_isDebugMode; }
+    DirectX::XMMATRIX GetViewProjectionMatrix() const;
 
 private:
     void UpdateMatrices();

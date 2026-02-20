@@ -9,6 +9,7 @@
 // WaterVLO.cpp
 // ================================================================================
 
+// FIX ME исправить rigid.
 #include "WaterVLO.h"
 #include "../Core/ResourceManager.h"
 #include "../Core/Logger.h"
@@ -48,7 +49,7 @@ WaterVLO::WaterVLO(ID3D11Device* device, ID3D11DeviceContext* context) : m_devic
 
 void WaterVLO::SetWorldPosition(const Vector3& pos) {
     m_position = pos;
-    UpdateBoundingBox(); // Пересчитываем границы при смене позиции
+    UpdateBoundingBox();
 }
 
 void WaterVLO::OverrideSize(Vector2 newSize) {
@@ -58,13 +59,13 @@ void WaterVLO::OverrideSize(Vector2 newSize) {
     m_gridSizeZ = std::clamp((int)ceilf(m_size.y / m_cfg.tessellation) + 1, 2, 512);
 
     CreateRenderData();
-    UpdateBoundingBox(); // Пересчитываем границы при смене размера
+    UpdateBoundingBox();
 }
 
 // Обновления коробки
 void WaterVLO::UpdateBoundingBox() {
     m_boundingBox.Center = m_position;
-    // X, Z - половина размера. Y - небольшой запас (10м) для волн.
+    // X, Z половина размера. Y небольшой запас (10м) для волн.
     m_boundingBox.Extents = Vector3(m_size.x * 0.5f, 10.0f, m_size.y * 0.5f);
 }
 
@@ -105,8 +106,10 @@ bool WaterVLO::Load(const std::string& vloPath) {
 
     std::string waveTex = w->readString("waveTexture", "system/maps/waves2.dds");
     std::string cubeTex = w->readString("reflectionTexture", "system/maps/cloudyhillscubemap2.dds");
-    m_waveMap = ResourceManager::Get().GetOrCacheTexture(waveTex);
-    m_skyMap = ResourceManager::Get().GetTextureRaw(cubeTex);
+
+    // Используем LoadTextureAsync
+    m_waveMap = ResourceManager::Get().LoadTextureAsync(waveTex);
+    m_skyMap = ResourceManager::Get().LoadTextureAsync(cubeTex);
 
     m_alphaData.clear();
     std::string oPath = p.parent_path().string() + "/" + m_uid + ".odata";
@@ -159,8 +162,10 @@ void WaterVLO::LoadDefaults(const std::string& uid) {
     m_cfg.waveScale = Vector2(1.f, 0.75f);
     m_cfg.windVelocity = 0.02f;
     m_cfg.sunPower = 32.f;
-    m_waveMap = ResourceManager::Get().GetOrCacheTexture("system/maps/waves2.dds");
-    m_skyMap = ResourceManager::Get().GetTextureRaw("system/maps/cloudyhillscubemap2.dds");
+
+    // Используем LoadTextureAsync
+    m_waveMap = ResourceManager::Get().LoadTextureAsync("system/maps/waves2.dds");
+    m_skyMap = ResourceManager::Get().LoadTextureAsync("system/maps/cloudyhillscubemap2.dds");
 
     BuildTransparencyTable();
     CreateRenderData();
@@ -215,7 +220,7 @@ void WaterVLO::CreateRenderData() {
     m_device->CreateBuffer(&ibd, &ii, m_indexBuffer.ReleaseAndGetAddressOf());
 }
 
-// --- РЕНДЕР ---
+// РЕНДЕР
 void WaterVLO::Render(const Matrix& view, const Matrix& proj,
     const Vector3& camPos, float time,
     ConstantBuffer<CB_VS_Transform>* tb,
@@ -225,24 +230,15 @@ void WaterVLO::Render(const Matrix& view, const Matrix& proj,
 {
     if (m_indexCount == 0 || !m_shader) return;
 
-    // --- ПРОВЕРКА ВИДИМОСТИ ---
+    // ПРОВЕРКА ВИДИМОСТИ
     if (checkVisibility) {
-        // Frustum Culling (Конус камеры)
         if (!frustum.Intersects(m_boundingBox)) {
-            return; 
+            return;
         }
 
-        // Distance Culling 
-        // Если ближайшая точка воды дальше, чем лимит видимости ТО отсекаем.
-        // Это позволяет видеть огромные озера, даже если их центр далеко.
-        // float distSq = m_boundingBox.DistanceSquared(camPos); // Функция из DirectXTK
-
         XMVECTOR vCam = XMLoadFloat3(&camPos);
-        // Вычисляем расстояние от точки до AABB
-        // DistanceSquared вернет 0, если точка ВНУТРИ бокса (мы плывем в озере)
         float distSq = 0.0f;
 
-        // Вручную считаем дистанцию до AABB
         Vector3 closestPoint;
         closestPoint.x = std::clamp(camPos.x, m_boundingBox.Center.x - m_boundingBox.Extents.x, m_boundingBox.Center.x + m_boundingBox.Extents.x);
         closestPoint.y = std::clamp(camPos.y, m_boundingBox.Center.y - m_boundingBox.Extents.y, m_boundingBox.Center.y + m_boundingBox.Extents.y);
@@ -255,7 +251,7 @@ void WaterVLO::Render(const Matrix& view, const Matrix& proj,
         }
     }
 
-    // --- ОТРИСОВКА ---
+    // ОТРИСОВКА
     CB_VS_Transform tf;
     tf.World = (Matrix::CreateRotationY(m_orientation) * Matrix::CreateTranslation(m_position)).Transpose();
     tf.View = view.Transpose();
@@ -276,7 +272,11 @@ void WaterVLO::Render(const Matrix& view, const Matrix& proj,
     m_cbWater->Update(wc);
     m_cbWater->BindPS(0);
 
-    ID3D11ShaderResourceView* srvs[] = { m_waveMap.Get(), m_skyMap.Get() };
+    // Берем SRV из объектов Texture через ->Get()
+    ID3D11ShaderResourceView* srvs[] = {
+        (m_waveMap ? m_waveMap->Get() : nullptr),
+        (m_skyMap ? m_skyMap->Get() : nullptr)
+    };
     m_context->PSSetShaderResources(0, 2, srvs);
     m_context->PSSetSamplers(0, 1, m_samplerState.GetAddressOf());
 

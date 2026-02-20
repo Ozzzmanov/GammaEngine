@@ -12,6 +12,7 @@
 
 #include "Camera.h"
 #include "../Core/InputSystem.h"
+#include "../Config/EngineConfig.h"
 #include <algorithm>
 #undef max
 #undef min
@@ -39,33 +40,42 @@ void Camera::Initialize(float fov, float aspectRatio, float nearZ, float farZ) {
 }
 
 void Camera::Update(float deltaTime, const InputSystem& input) {
-    // Вращение (Мышь)
+    // Вращение
     XMFLOAT2 mouseDelta = input.GetMouseDelta();
+    float sensitivity = EngineConfig::Get().MouseSensitivity;
 
-    // Если зажат ПКМ - вращаем камеру
+    float rotX = mouseDelta.x * (sensitivity / 0.003f);
+    float rotY = mouseDelta.y * (sensitivity / 0.003f);
+
+    if (EngineConfig::Get().InvertY) rotY = -rotY;
+
     if (input.IsKeyDown(VK_RBUTTON)) {
-        m_yaw += mouseDelta.x;
-        m_pitch += mouseDelta.y;
-
-        // Clamp pitch
-        m_pitch = std::max(-1.5f, std::min(m_pitch, 1.5f));
+        m_yaw += rotX;
+        m_pitch += rotY;
+        float limit = XM_PIDIV2 - 0.01f;
+        m_pitch = std::max(-limit, std::min(m_pitch, limit));
     }
 
     // Перемещение
     float speed = 100.0f * deltaTime;
-    if (input.IsKeyDown(VK_SHIFT)) speed *= 5.0f;
+
+    // Спринт
+    if (input.IsActionActive("Sprint")) speed *= 5.0f;
 
     XMVECTOR pos = XMLoadFloat3(&m_position);
+
     XMVECTOR forward = XMVectorSet(sinf(m_yaw), 0, cosf(m_yaw), 0);
     XMVECTOR right = XMVectorSet(cosf(m_yaw), 0, -sinf(m_yaw), 0);
     XMVECTOR up = XMVectorSet(0, 1, 0, 0);
 
-    if (input.IsKeyDown('W')) pos += forward * speed;
-    if (input.IsKeyDown('S')) pos -= forward * speed;
-    if (input.IsKeyDown('A')) pos -= right * speed;
-    if (input.IsKeyDown('D')) pos += right * speed;
-    if (input.IsKeyDown('Q')) pos -= up * speed;
-    if (input.IsKeyDown('E')) pos += up * speed;
+    if (input.IsActionActive("MoveForward"))  pos += forward * speed;
+    if (input.IsActionActive("MoveBackward")) pos -= forward * speed;
+    if (input.IsActionActive("MoveLeft"))     pos -= right * speed;
+    if (input.IsActionActive("MoveRight"))    pos += right * speed;
+
+    // Q / E (Fly Down / Fly Up)
+    if (input.IsActionActive("FlyUp"))        pos += up * speed; // E
+    if (input.IsActionActive("FlyDown"))      pos -= up * speed; // Q
 
     XMStoreFloat3(&m_position, pos);
 
@@ -82,18 +92,21 @@ void Camera::UpdateMatrices() {
     XMMATRIX V = XMMatrixLookAtLH(pos, target, up);
     XMStoreFloat4x4(&m_viewMatrix, V);
 
-    // Если дебаг режим НЕ активен - обновляем фрустум для отсечения
     if (!m_isDebugMode) {
         BoundingFrustum viewFrustum;
         BoundingFrustum::CreateFromMatrix(viewFrustum, XMLoadFloat4x4(&m_projectionMatrix));
-
         XMMATRIX invView = XMMatrixInverse(nullptr, V);
         viewFrustum.Transform(m_frustum, invView);
-
-        m_cullOrigin = m_position; // Точка отсчета дистанции тоже обновляется
+        m_cullOrigin = m_position;
     }
 }
 
 void Camera::ToggleDebugMode() {
     m_isDebugMode = !m_isDebugMode;
+}
+
+DirectX::XMMATRIX Camera::GetViewProjectionMatrix() const {
+    XMMATRIX view = XMLoadFloat4x4(&m_viewMatrix);
+    XMMATRIX proj = XMLoadFloat4x4(&m_projectionMatrix);
+    return XMMatrixMultiply(view, proj);
 }

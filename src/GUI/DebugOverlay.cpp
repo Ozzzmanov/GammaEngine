@@ -47,7 +47,8 @@ void DebugOverlay::Render(const Stats& stats) {
     std::wstring debugCamStatus = stats.isDebugCam ? L" [FROZEN]" : L" [FOLLOW]";
 
     std::wstring debugInfo =
-        L"Pos: " + std::to_wstring((int)stats.camPos.x) + L", " +
+        L"FPS: " + std::to_wstring(stats.fps) +
+        L"\nPos: " + std::to_wstring((int)stats.camPos.x) + L", " +
         std::to_wstring((int)stats.camPos.y) + L", " + std::to_wstring((int)stats.camPos.z) +
         L"\nChunk Grid: [" + std::to_wstring(curX) + L", " + std::to_wstring(curZ) + L"]" +
         L"\nRender Dist (Z/X): " + std::to_wstring((int)stats.renderDist) + L"m" +

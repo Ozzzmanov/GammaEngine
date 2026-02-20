@@ -7,21 +7,24 @@
 //
 // ================================================================================
 // GammaEngine.cpp
-// Реализация основного класса движка.
 // ================================================================================
 
 #include "GammaEngine.h"
 
-// Subsystems
 #include "Core/Logger.h"
 #include "Core/ResourceManager.h"
+#include "Core/TaskScheduler.h"
 #include "Graphics/DX11Renderer.h"
-#include "Graphics/Shader.h"
-#include "Graphics/ConstantBuffer.h"
 #include "Graphics/LevelTextureManager.h" 
+#include "Graphics/ModelManager.h"
+#include "Graphics/ShaderManager.h"
+#include "Graphics/StaticGpuScene.h"    
+#include "Graphics/TerrainGpuScene.h"     
 #include "Resources/SpaceSettings.h"
+#include "Resources/TerrainArrayManager.h"
 #include "World/Chunk.h"
 #include "World/WaterVLO.h"
+#include "Config/EngineConfig.h"
 
 static GammaEngine* g_pEngineInstance = nullptr;
 
@@ -33,10 +36,6 @@ void RegisterDetectedVLO(const std::string& uid, const std::string& type,
     }
 }
 
-// ============================================================================
-// CONSTRUCTOR & DESTRUCTOR
-// ============================================================================
-
 GammaEngine::GammaEngine() {
     m_window = std::make_unique<Window>();
     m_renderer = std::make_unique<DX11Renderer>();
@@ -44,57 +43,67 @@ GammaEngine::GammaEngine() {
 }
 
 GammaEngine::~GammaEngine() {
+    TaskScheduler::Get().Shutdown();
     g_pEngineInstance = nullptr;
 }
-
-// ============================================================================
-// INITIALIZATION
-// ============================================================================
 
 bool GammaEngine::Initialize() {
     Logger::Info(LogCategory::General, "Starting Gamma Engine Initialization");
 
-    if (!m_window->Initialize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, "Gamma Engine")) return false;
-    if (!m_renderer->Initialize(m_window->GetHWND(), DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)) return false;
+    const auto& cfg = EngineConfig::Get();
 
-    ResourceManager::Get().Initialize(m_renderer->GetDevice(), m_renderer->GetContext());
+    if (!m_window->Initialize(cfg.WindowWidth, cfg.WindowHeight, cfg.WindowTitle)) return false;
+    if (!m_renderer->Initialize(m_window->GetHWND(), cfg.WindowWidth, cfg.WindowHeight)) return false;
 
     // Инициализация подсистем
+    TaskScheduler::Get().Initialize();
+    ResourceManager::Get().Initialize(m_renderer->GetDevice(), m_renderer->GetContext());
+    ResourceManager::Get().SetAsyncMode(true);
+    ShaderManager::Get().Initialize(m_renderer->GetDevice());
+    ModelManager::Get().Initialize(m_renderer->GetDevice(), m_renderer->GetContext());
+
     m_input = std::make_unique<InputSystem>();
     m_input->Initialize();
 
-    // НАЗНАЧЕНИЕ КЛАВИШ (BINDINGS) FIX ME ЭТО ДОЛЖНО БЫТЬ ВНЕШНЕ.
-    m_input->BindAction("ToggleCulling", VK_F1);
-    m_input->BindAction("ToggleDebugCam", VK_F2);
-    m_input->BindAction("ToggleWireframe", VK_TAB);
-    m_input->BindAction("RenderDistUp", 'X');
-    m_input->BindAction("RenderDistDown", 'Z');
+    for (const auto& bind : cfg.KeyBindings) {
+        if (bind.keyCode != 0) m_input->BindAction(bind.actionName, bind.keyCode);
+    }
 
+    // Применяем начальные настройки
+    m_renderSettings.RenderDistance = cfg.RenderDistance;
+    m_renderSettings.EnableCulling = cfg.EnableFrustumCulling;
+    m_renderSettings.EnableLODs = cfg.Lod.Enabled;
+    m_renderSettings.EnableZPrepass = cfg.EnableZPrepass;
 
     m_camera = std::make_unique<Camera>();
-
-    m_camera->Initialize(DirectX::XM_PIDIV4, (float)DEFAULT_WINDOW_WIDTH / DEFAULT_WINDOW_HEIGHT, 0.1f, 20000.0f);
+    float fovRad = cfg.FOV * (3.14159f / 180.0f);
+    m_camera->Initialize(fovRad, (float)cfg.WindowWidth / cfg.WindowHeight, cfg.NearZ, cfg.FarZ);
 
     m_debugOverlay = std::make_unique<DebugOverlay>(m_renderer->GetDevice(), m_renderer->GetContext());
     m_debugOverlay->LoadContent(L"Assets/Fonts/consolas.spritefont");
 
+    // Инициализируем пайплайн
+    m_renderPipeline = std::make_unique<RenderPipeline>(m_renderer.get());
+    if (!m_renderPipeline->Initialize()) {
+        Logger::Error(LogCategory::General, "Failed to initialize RenderPipeline!");
+        return false;
+    }
+
     m_worldLoader = std::make_unique<WorldLoader>(m_renderer->GetDevice(), m_renderer->GetContext());
 
-    // Шейдеры
-    m_shader = std::make_unique<Shader>(m_renderer->GetDevice(), m_renderer->GetContext());
-    if (!m_shader->Load(L"Assets/Shaders/Terrain.hlsl")) return false;
+    Logger::Info(LogCategory::General, "--- LOADING WORLD ---");
+    std::string levelPath = "Assets/outlands";
 
-    m_shaderLegacy = std::make_unique<Shader>(m_renderer->GetDevice(), m_renderer->GetContext());
-    m_shaderLegacy->Load(L"Assets/Shaders/TerrainLegacy.hlsl");
+    // Передаем сцены из пайплайна в WorldLoader
+    m_worldLoader->LoadLocation(levelPath, m_chunks, m_waterObjects,
+        m_spaceSettings, m_levelTextureManager,
+        m_renderPipeline->GetStaticScene(),
+        m_renderPipeline->GetTerrainArrayManager(),
+        m_renderPipeline->GetTerrainScene());
 
-    m_transformBuffer = std::make_unique<ConstantBuffer<CB_VS_Transform>>(m_renderer->GetDevice(), m_renderer->GetContext());
-    m_transformBuffer->Initialize(true);
+    Logger::Info(LogCategory::General, "Building Static GPU Scene...");
+    m_renderPipeline->GetStaticScene()->BuildGpuBuffers();
 
-    // Загрузка мира
-    m_worldLoader->LoadLocation("Assets/outlands",
-        m_chunks, m_waterObjects, m_spaceSettings, m_levelTextureManager, m_useLegacyRender);
-
-    Logger::Info(LogCategory::General, "Initialization Complete");
     return true;
 }
 
@@ -106,10 +115,6 @@ void GammaEngine::RegisterVLO(const std::string& uid, const std::string& type,
     }
 }
 
-// ============================================================================
-// RUN / UPDATE / RENDER
-// ============================================================================
-
 void GammaEngine::Run() {
     m_timer.Tick();
     while (m_window->ProcessMessages()) {
@@ -120,104 +125,68 @@ void GammaEngine::Run() {
 }
 
 void GammaEngine::Update() {
-    // Статистика
     m_frameCount++;
     m_timeElapsed += m_timer.GetDeltaTime();
     if (m_timeElapsed >= 1.0f) {
         m_fps = m_frameCount;
         m_frameCount = 0;
         m_timeElapsed = 0.0f;
-        m_window->SetTitle("Gamma Engine | FPS: " + std::to_string(m_fps));
+        std::string mode = ResourceManager::Get().IsAsyncMode() ? "Async" : "Sync";
+        m_window->SetTitle(EngineConfig::Get().WindowTitle + " | FPS: " + std::to_string(m_fps) + " | " + mode);
     }
 
-    // Ввод
+    TaskScheduler::Get().ProcessMainThreadCallbacks(0.003f);
     m_input->Update(m_window->GetHWND());
 
-    // Логика движка через ACTIONS
-
+    // Управление настройками рендера
     if (m_input->IsActionTriggered("ToggleCulling")) {
-        m_enableCulling = !m_enableCulling;
-        Logger::Info(LogCategory::Render, m_enableCulling ? "Culling ON" : "Culling OFF");
+        m_renderSettings.EnableCulling = !m_renderSettings.EnableCulling;
     }
-
     if (m_input->IsActionTriggered("ToggleDebugCam")) {
         m_camera->ToggleDebugMode();
-        Logger::Info(LogCategory::Render, m_camera->IsDebugMode() ? "Debug Camera: ON" : "Debug Camera: OFF");
+        m_renderSettings.FreezeCulling = m_camera->IsDebugMode();
     }
-
     if (m_input->IsActionTriggered("ToggleWireframe")) {
-        m_isWireframe = !m_isWireframe;
-        m_renderer->SetWireframe(m_isWireframe);
+        m_renderSettings.IsWireframe = !m_renderSettings.IsWireframe;
+    }
+    if (m_input->IsActionTriggered("ToggleHZB")) {
+        m_renderSettings.ShowHzbDebug = !m_renderSettings.ShowHzbDebug;
+    }
+    if (m_input->IsActionTriggered("ToggleLODs")) {
+        m_renderSettings.EnableLODs = !m_renderSettings.EnableLODs;
     }
 
-    // Дальность прорисовки (Hold Actions - используем Active, а не Triggered)
-    if (m_input->IsActionActive("RenderDistDown")) m_renderDistance -= 25.0f;
-    if (m_input->IsActionActive("RenderDistUp"))   m_renderDistance += 25.0f;
+    if (m_input->IsActionActive("RenderDistDown")) m_renderSettings.RenderDistance -= 500.0f * m_timer.GetDeltaTime();
+    if (m_input->IsActionActive("RenderDistUp"))   m_renderSettings.RenderDistance += 500.0f * m_timer.GetDeltaTime();
 
-    // Лимиты
-    if (m_renderDistance < 100.0f) m_renderDistance = 100.0f;
-    if (m_renderDistance > 30000.0f) m_renderDistance = 30000.0f;
+    if (m_renderSettings.RenderDistance < 100.0f) m_renderSettings.RenderDistance = 100.0f;
+    if (m_renderSettings.RenderDistance > 30000.0f) m_renderSettings.RenderDistance = 30000.0f;
 
-    // Обновление камеры
     m_camera->Update(m_timer.GetDeltaTime(), *m_input);
 }
 
 void GammaEngine::Render() {
-    m_renderer->Clear(0.1f, 0.15f, 0.25f, 1.0f);
-    m_renderer->BindDefaultDepthState();
+    RenderStats stats = m_renderPipeline->RenderFrame(
+        m_camera.get(),
+        m_waterObjects,
+        m_levelTextureManager.get(),
+        m_timer.GetTotalTime(),
+        m_renderSettings
+    );
 
-    // Setup Render State
-    if (m_useLegacyRender) {
-        if (m_shaderLegacy) m_shaderLegacy->Bind();
-    }
-    else {
-        if (m_shader) m_shader->Bind();
-        if (m_levelTextureManager) {
-            ID3D11ShaderResourceView* srv = m_levelTextureManager->GetSRV();
-            if (srv) m_renderer->GetContext()->PSSetShaderResources(0, 1, &srv);
-        }
-    }
+    // Отрисовка UI
+    DebugOverlay::Stats uiStats;
+    uiStats.camPos = m_camera->GetPosition();
+    uiStats.renderDist = m_renderSettings.RenderDistance;
+    uiStats.isCulling = m_renderSettings.EnableCulling;
+    uiStats.isDebugCam = m_renderSettings.FreezeCulling;
+    uiStats.chunksDrawn = -1;
+    uiStats.totalChunks = (int)m_chunks.size();
+    uiStats.waterCount = (int)m_waterObjects.size();
+    uiStats.fps = m_fps;
 
-    float renderDistSq = m_renderDistance * m_renderDistance;
-    int chunksDrawn = 0;
+    m_debugOverlay->Render(uiStats);
 
-    // --- Чанки ---
-    // Используем геттеры камеры:
-    // View/Proj - всегда актуальные
-    // Frustum/CullOrigin - могут быть "замороженными" для дебага
-    for (const auto& chunk : m_chunks) {
-        if (chunk->Render(m_transformBuffer.get(),
-            XMLoadFloat4x4(&m_camera->GetViewMatrix()),
-            XMLoadFloat4x4(&m_camera->GetProjectionMatrix()),
-            m_camera->GetFrustum(),
-            m_camera->GetCullOrigin(),
-            renderDistSq, m_enableCulling))
-        {
-            chunksDrawn++;
-        }
-    }
-
-    // --- Вода ---
-    float gameTime = m_timer.GetTotalTime();
-    for (const auto& water : m_waterObjects) {
-        water->Render(XMLoadFloat4x4(&m_camera->GetViewMatrix()),
-            XMLoadFloat4x4(&m_camera->GetProjectionMatrix()),
-            m_camera->GetPosition(),
-            gameTime, m_transformBuffer.get(),
-            m_camera->GetFrustum(), renderDistSq, m_enableCulling);
-    }
-
-    // --- Debug GUI ---
-    DebugOverlay::Stats stats;
-    stats.camPos = m_camera->GetPosition();
-    stats.renderDist = m_renderDistance;
-    stats.isCulling = m_enableCulling;
-    stats.isDebugCam = m_camera->IsDebugMode();
-    stats.chunksDrawn = chunksDrawn;
-    stats.totalChunks = (int)m_chunks.size();
-    stats.waterCount = (int)m_waterObjects.size();
-
-    m_debugOverlay->Render(stats);
-
-    m_renderer->Present(false);
+    // Переворачиваем буферы
+    m_renderer->Present(EngineConfig::Get().VSync);
 }

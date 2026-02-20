@@ -32,7 +32,7 @@ private:
     float m_deltaTime;
     float m_totalTime;
 
-    // Сглаживание
+    // FIX ME вырезать Сглаживание в приоритет сырой дельты.
     static const int MAX_SAMPLE_COUNT = 50;
     float m_deltaBuffer[MAX_SAMPLE_COUNT];
     int m_sampleIndex = 0;

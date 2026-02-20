@@ -22,9 +22,8 @@ static inline bool IsGuidChar(uint8_t c) {
         c == '.';
 }
 
-// --------------------------------------------------------------------------------------
-// ОПТИМИЗИРОВАННЫЙ ПОИСК GUID
-// --------------------------------------------------------------------------------------
+
+// ПОИСК GUID
 std::string BwPackedSection::ExtractWaterGUID(const std::vector<uint8_t>& blob) {
     if (blob.size() < 40) return "";
 
@@ -60,24 +59,23 @@ std::string BwPackedSection::ExtractWaterGUID(const std::vector<uint8_t>& blob) 
 
 DirectX::XMFLOAT4X4 BwPackedSection::AsMatrix() {
     DirectX::XMFLOAT4X4 result;
-    // Инициализируем единичной матрицей
+    // Дефолтное значение Identity
     DirectX::XMStoreFloat4x4(&result, DirectX::XMMatrixIdentity());
 
-    // BigWorld хранит матрицу как 4 строки по 3 float (Row-Major) или 4x4
-    // Обычно в чанках это 48 байт: 
-    // Row0 (Right), Row1 (Up), Row2 (Forward), Row3 (Position)
+    // Если данных недостаточно, возвращаем Identity и не падаем
+    if (m_data.size() < 48) {
+        return result;
+    }
 
-    if (m_data.size() == 48) { // 12 floats
-        const float* f = reinterpret_cast<const float*>(m_data.data());
+    const float* f = reinterpret_cast<const float*>(m_data.data());
 
-        // В BigWorld порядок строк совпадает с DirectX Row-Major
+    if (m_data.size() == 48) { // 12 floats (Row Major без последней колонки)
         result._11 = f[0]; result._12 = f[1]; result._13 = f[2]; result._14 = 0.0f;
         result._21 = f[3]; result._22 = f[4]; result._23 = f[5]; result._24 = 0.0f;
         result._31 = f[6]; result._32 = f[7]; result._33 = f[8]; result._34 = 0.0f;
         result._41 = f[9]; result._42 = f[10]; result._43 = f[11]; result._44 = 1.0f;
     }
-    else if (m_data.size() == 64) { // 16 floats (редко, но бывает)
-        const float* f = reinterpret_cast<const float*>(m_data.data());
+    else if (m_data.size() >= 64) { // 16 floats
         memcpy(&result, f, 64);
     }
 
@@ -92,7 +90,7 @@ std::string BwPackedSection::ExtractGUID(const std::vector<uint8_t>& blob) {
 
     // Скользящее окно 35 байт
     for (size_t i = 0; i <= size - 35; ++i) {
-        // Быстрая проверка: GUID обычно начинается с цифры или буквы a-f
+        // GUID обычно начинается с цифры или буквы a-f
         if (!IsGuidChar(data[i])) continue;
 
         // Проверяем структуру: точки должны быть на позициях 8, 17, 26
@@ -165,6 +163,11 @@ bool BwPackedSection::Load(const char* unused, const char* recordsStart, int num
         uint32_t endPos = res & 0x0FFFFFFF;
 
         std::string name = (keyIndex < stringTable.size()) ? stringTable[keyIndex] : "unk";
+
+        if (baseDataPtr + endPos > fileEnd) {
+            endPos = (uint32_t)(fileEnd - baseDataPtr);
+        }
+
         const char* childDataPtr = baseDataPtr + currentDataOffset;
         int length = endPos - currentDataOffset;
 
@@ -199,20 +202,15 @@ bool BwPackedSection::Load(const char* unused, const char* recordsStart, int num
     return true;
 }
 
-// --------------------------------------------------------------------------------------
-// DATA ACCESS
-// --------------------------------------------------------------------------------------
-
 std::string BwPackedSection::GetValueAsString() const {
     if (m_data.empty()) return "";
 
     std::stringstream ss;
-    ss.imbue(std::locale::classic()); // Важно для точек в float
-    ss << std::fixed << std::setprecision(6); // Достаточная точность для координат
+    ss.imbue(std::locale::classic()); 
+    ss << std::fixed << std::setprecision(6);
 
     size_t len = m_data.size();
 
-    // Специальная обработка для векторов/float
     if (m_type == TYPE_FLOAT) {
         const float* f = reinterpret_cast<const float*>(m_data.data());
         if (len == 12) { // Vector3
@@ -231,24 +229,19 @@ std::string BwPackedSection::GetValueAsString() const {
 
     // Обработка строк и прочих типов
     std::string s(m_data.begin(), m_data.end());
-    // Удаляем нуль-терминатор, если есть
-    s.erase(std::remove(s.begin(), s.end(), '\0'), s.end());
+    if (m_type == TYPE_STRING) {
+        while (!s.empty() && s.back() == '\0') {
+            s.pop_back();
+        }
+    }
+
     return s;
 }
 
 DirectX::XMFLOAT3 BwPackedSection::AsVector3() const {
-    if (m_type == TYPE_FLOAT && m_data.size() >= 12) {
-        const float* f = reinterpret_cast<const float*>(m_data.data());
-        return DirectX::XMFLOAT3(f[0], f[1], f[2]);
-    }
+    // Проверка размера
+    if (m_data.size() < 12) return DirectX::XMFLOAT3(0, 0, 0);
 
-    // Fallback: парсинг из строки (медленно, но надежно для странных форматов)
-    std::string s = GetValueAsString();
-    if (s.empty()) return DirectX::XMFLOAT3(0, 0, 0);
-
-    std::stringstream ss(s);
-    ss.imbue(std::locale::classic());
-    float x = 0, y = 0, z = 0;
-    ss >> x >> y >> z;
-    return DirectX::XMFLOAT3(x, y, z);
+    const float* f = reinterpret_cast<const float*>(m_data.data());
+    return DirectX::XMFLOAT3(f[0], f[1], f[2]);
 }

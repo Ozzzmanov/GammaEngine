@@ -7,7 +7,6 @@
 //
 // ================================================================================
 // Chunk.cpp
-// Реализация чанка с Frustum Culling.
 // ================================================================================
 
 #include "Chunk.h"
@@ -17,11 +16,26 @@
 #include <fstream>
 #include <vector>
 #include <algorithm>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 extern void RegisterDetectedVLO(const std::string& uid, const std::string& type, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& scale);
 
 static inline bool IsGuidChar(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '_';
+}
+
+std::string ConvertToNewModelPath(const std::string& oldPath) {
+    fs::path p(oldPath);
+    std::string filename = p.stem().string();
+    std::string newPath = "Assets/NewModels/Models/" + filename + ".gltf";
+
+    if (!fs::exists(newPath)) {
+        std::string glbPath = "Assets/NewModels/Models/" + filename + ".glb";
+        if (fs::exists(glbPath)) return glbPath;
+    }
+    return newPath;
 }
 
 Chunk::Chunk(ID3D11Device* device, ID3D11DeviceContext* context)
@@ -31,19 +45,17 @@ Chunk::Chunk(ID3D11Device* device, ID3D11DeviceContext* context)
 Chunk::~Chunk() {}
 
 bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
-    const SpaceParams& params, LevelTextureManager* texMgr, VegetationManager* vegMgr, bool onlyScan)
+    const SpaceParams& params, LevelTextureManager* texMgr)
 {
     m_chunkName = fs::path(chunkFilePath).filename().string();
-    m_gridX = gridX;
-    m_gridZ = gridZ;
-    m_position = DirectX::XMFLOAT3(gridX * 100.0f + 50.0f, 0.0f, gridZ * 100.0f + 50.0f);
+    m_gridX = gridX; m_gridZ = gridZ;
 
+    m_position = DirectX::XMFLOAT3(gridX * 100.0f + 50.0f, 0.0f, gridZ * 100.0f + 50.0f);
     m_boundingBox.Center = m_position;
     m_boundingBox.Extents = DirectX::XMFLOAT3(50.0f, 500.0f, 50.0f);
 
     std::ifstream file(chunkFilePath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) return false;
-
     size_t size = static_cast<size_t>(file.tellg());
     file.seekg(0, std::ios::beg);
     std::vector<char> buffer(size);
@@ -54,24 +66,26 @@ bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
 
     auto root = BwPackedSection::Create(buffer.data(), size);
     if (root) {
-        ScanForVLOs(root);       // Поиск воды
+        ScanForVLOs(root);
+        ScanForModels(root);
     }
 
     fs::path cdataPath = fs::path(chunkFilePath).replace_extension(".cdata");
     if (fs::exists(cdataPath)) {
-        m_terrain = std::make_unique<Terrain>(m_device, m_context);
+        m_terrain = std::make_unique<Terrain>();
         m_terrain->SetPosition(m_position.x, m_position.y, m_position.z);
-        bool useLegacy = (texMgr == nullptr);
-        m_terrain->Initialize(cdataPath.string(), params, texMgr, onlyScan, useLegacy);
+        m_terrain->Initialize(gridX, gridZ, texMgr);
 
-        // Уточняем высоту BoundingBox, если террейн загружен
         float minH = m_terrain->GetMinHeight();
         float maxH = m_terrain->GetMaxHeight();
-        float midY = (minH + maxH) * 0.5f;
-        float heightExt = (maxH - minH) * 0.5f + 10.0f; // +10м запас
-        m_boundingBox.Center.y = midY;
-        m_boundingBox.Extents.y = heightExt;
+        float heightPadding = 50.0f;
+
+        m_boundingBox.Center.y = (minH + maxH) * 0.5f + (heightPadding * 0.5f);
+        m_boundingBox.Extents.y = std::max((maxH - minH) * 0.5f, 1.0f) + heightPadding;
     }
+
+    m_boundingBox.Extents.x += 2.0f;
+    m_boundingBox.Extents.z += 2.0f;
 
     return true;
 }
@@ -80,7 +94,6 @@ void Chunk::PreScanForWater(const std::vector<char>& buffer) {
     const char* data = buffer.data();
     size_t size = buffer.size();
     if (size < 40) return;
-
     for (size_t i = 35; i <= size - 5; ++i) {
         if (data[i] == 'w' && data[i + 1] == 'a' && data[i + 2] == 't' && data[i + 3] == 'e' && data[i + 4] == 'r') {
             size_t start = i - 35;
@@ -116,51 +129,29 @@ void Chunk::ScanForVLOs(std::shared_ptr<BwPackedSection> root) {
 
 void Chunk::RecursiveVloScan(std::shared_ptr<BwPackedSection> section, std::vector<ChunkVloInfo>& outInfos) {
     if (!section) return;
-
     for (auto child : section->GetChildren()) {
         std::string tagName = child->GetName();
         bool isVloContainer = (tagName == "water" || tagName == "vlo");
-
         if (isVloContainer) {
             ChunkVloInfo info;
             info.type = (tagName == "water") ? "water" : "";
-            info.hasPosition = false;
-            info.hasScale = false;
-
             for (auto prop : child->GetChildren()) {
                 std::string propName = prop->GetName();
                 const auto& blob = prop->GetBlob();
                 size_t len = blob.size();
-
-                if (propName == "uid") {
+                if (propName == "uid") info.uid = prop->GetValueAsString();
+                else if (len >= 35 && len <= 40 && info.uid.empty()) {
                     std::string val = prop->GetValueAsString();
-                    if (val.length() >= 35) info.uid = val;
+                    if (val.find("...") == std::string::npos) info.uid = val;
                 }
-                else if (len >= 35 && len <= 40) { // Fallback для UID без имени
-                    std::string val = prop->GetValueAsString();
-                    int dots = 0;
-                    for (char c : val) if (c == '.') dots++;
-                    if (dots == 3) info.uid = val;
-                }
-
-                if (propName == "position") {
-                    info.position = prop->AsVector3();
-                    info.hasPosition = true;
-                }
-
+                if (propName == "position") info.position = prop->AsVector3();
                 if (propName == "transform" && (len == 48 || len == 64)) {
                     const float* m = reinterpret_cast<const float*>(blob.data());
                     if (len == 48) info.position = { m[9], m[10], m[11] };
                     else           info.position = { m[12], m[13], m[14] };
-                    info.hasPosition = true;
                 }
-
-                if (propName == "size") {
-                    info.scale = prop->AsVector3();
-                    info.hasScale = true;
-                }
+                if (propName == "size") info.scale = prop->AsVector3();
             }
-
             if (!info.uid.empty()) {
                 if (info.type.empty()) info.type = "water";
                 outInfos.push_back(info);
@@ -170,52 +161,57 @@ void Chunk::RecursiveVloScan(std::shared_ptr<BwPackedSection> section, std::vect
     }
 }
 
-// --- РЕНДЕР ---
-bool Chunk::Render(ConstantBuffer<CB_VS_Transform>* cb,
-    const DirectX::XMMATRIX& view,
-    const DirectX::XMMATRIX& proj,
-    const DirectX::BoundingFrustum& cameraFrustum,
-    const DirectX::XMFLOAT3& camPos,
-    float renderDistanceSq,
-    bool checkVisibility)
-{
-    // Отсечение целого Чанка (Chunk Culling)
-    if (checkVisibility) {
-        float dx = m_position.x - camPos.x;
-        float dz = m_position.z - camPos.z;
-        float distSq = dx * dx + dz * dz;
+void Chunk::ScanForModels(std::shared_ptr<BwPackedSection> root) {
+    if (!root) return;
+    std::vector<std::shared_ptr<BwPackedSection>> stack;
+    stack.push_back(root);
 
-        // Если чанк слишком далеко — не рисуем ничего
-        if (distSq > renderDistanceSq) return false;
+    while (!stack.empty()) {
+        auto section = stack.back();
+        stack.pop_back();
+        std::string type = section->GetName();
+        // FIX ME ИСПРАВИТЬ ДЛЯ РЕАЛЬНЫХ ШЕЛОВ
+        if (type == "model" || type == "shell") {
+            std::string resource;
+            DirectX::XMFLOAT4X4 localTransform;
+            DirectX::XMStoreFloat4x4(&localTransform, DirectX::XMMatrixIdentity());
+            bool hasRes = false;
 
-        // Проверка пирамиды видимости (Frustum Culling) по BoundingBox чанка
-        if (!cameraFrustum.Intersects(m_boundingBox)) {
-            return false;
+            for (auto child : section->GetChildren()) {
+                if (child->GetName() == "resource") {
+                    resource = ConvertToNewModelPath(child->GetValueAsString());
+                    hasRes = true;
+                }
+                else if (child->GetName() == "transform") {
+                    localTransform = child->AsMatrix();
+                }
+            }
+
+            if (hasRes) {
+                float chunkCornerX = (float)m_gridX * 100.0f;
+                float chunkCornerZ = (float)m_gridZ * 100.0f;
+
+                DirectX::XMMATRIX mLocal = DirectX::XMLoadFloat4x4(&localTransform);
+                DirectX::XMMATRIX mOffset = DirectX::XMMatrixTranslation(chunkCornerX, 0.0f, chunkCornerZ);
+                DirectX::XMMATRIX mWorld = DirectX::XMMatrixMultiply(mLocal, mOffset);
+
+                DirectX::XMVECTOR scaleVec, rotQuat, transVec;
+                DirectX::XMMatrixDecompose(&scaleVec, &rotQuat, &transVec, mWorld);
+
+                ParsedStaticEntity entity;
+                entity.ModelPath = resource;
+                DirectX::XMStoreFloat3(&entity.Position, transVec);
+                DirectX::XMStoreFloat3(&entity.Scale, scaleVec);
+
+                DirectX::XMFLOAT4 q;
+                DirectX::XMStoreFloat4(&q, rotQuat);
+                if (q.w < 0.0f) { q.x = -q.x; q.y = -q.y; q.z = -q.z; q.w = -q.w; }
+                entity.RotXYZ = { q.x, q.y, q.z };
+
+                m_staticEntities.push_back(entity);
+            }
         }
+
+        for (auto child : section->GetChildren()) stack.push_back(child);
     }
-
-    bool drawnSomething = false;
-
-    DirectX::XMMATRIX viewT = DirectX::XMMatrixTranspose(view);
-    DirectX::XMMATRIX projT = DirectX::XMMatrixTranspose(proj);
-
-    // ---------------------------------------------------------
-    // Рендер Ландшафта (Terrain)
-    // ---------------------------------------------------------
-    if (m_terrain) {
-        DirectX::XMMATRIX terrainWorld = DirectX::XMMatrixTranslation(m_position.x, m_position.y, m_position.z);
-
-        CB_VS_Transform data;
-        data.World = DirectX::XMMatrixTranspose(terrainWorld);
-        data.View = viewT;
-        data.Projection = projT;
-
-        cb->UpdateDynamic(data);
-        cb->BindVS(0);
-
-        m_terrain->Render();
-        drawnSomething = true;
-    }
-
-    return drawnSomething;
 }

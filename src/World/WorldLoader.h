@@ -7,7 +7,6 @@
 //
 // ================================================================================
 // WorldLoader.h
-// Отвечает за сканирование директорий, загрузку чанков и объектов (VLO).
 // ================================================================================
 
 #pragma once
@@ -19,11 +18,13 @@
 #include <d3d11.h>
 #include <DirectXMath.h>
 
-// Forward declarations
 class Chunk;
 class WaterVLO;
 class SpaceSettings;
 class LevelTextureManager;
+class StaticGpuScene;
+class TerrainArrayManager;
+class TerrainGpuScene;
 
 class WorldLoader {
 public:
@@ -35,7 +36,9 @@ public:
         std::vector<std::shared_ptr<WaterVLO>>& outWaterObjects,
         std::unique_ptr<SpaceSettings>& outSettings,
         std::unique_ptr<LevelTextureManager>& outTexMgr,
-        bool useLegacyRender);
+        StaticGpuScene* staticScene,
+        TerrainArrayManager* arrayManager,
+        TerrainGpuScene* terrainGpuScene);
 
     void LoadVLOByUID(const std::string& rawUid, const std::string& type,
         const DirectX::XMFLOAT3& position, const DirectX::XMFLOAT3& scale,

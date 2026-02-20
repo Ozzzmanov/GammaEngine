@@ -34,6 +34,7 @@ public:
         int chunksDrawn;
         int totalChunks;
         int waterCount;
+        int fps;
     };
 
     void Render(const Stats& stats);

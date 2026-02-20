@@ -67,7 +67,7 @@ bool SpaceSettings::Load(const std::string& filename) {
     if (!sLodNormDist.empty())  m_params.lodNormalDistance = std::stof(sLodNormDist);
     if (!sDetailDist.empty())   m_params.detailHeightMapDistance = std::stof(sDetailDist);
 
-    // --- Глобальные параметры ---
+    // Глобальные параметры ---
     std::string sStartPos = GetTagValue(content, "startPosition");
     std::string sStartDir = GetTagValue(content, "startDirection");
     std::string sFarPlane = GetTagValue(content, "farPlane");

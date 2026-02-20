@@ -26,8 +26,6 @@ public:
     // Фабричный метод: определяет формат (Binary/XML) и создает иерархию
     static DataSectionPtr CreateFromXML(const std::string& filename);
 
-    // --- Навигация ---
-
     // Открыть одиночную секцию (например: "water/position")
     DataSectionPtr openSection(const std::string& tagPath);
 
@@ -35,7 +33,6 @@ public:
     std::vector<DataSectionPtr> openSections(const std::string& tagPath);
 
     // --- Чтение данных ---
-
     std::string readString(const std::string& tagPath, const std::string& defaultVal = "");
     int         readInt(const std::string& tagPath, int defaultVal = 0);
     bool        readBool(const std::string& tagPath, bool defaultVal = false);

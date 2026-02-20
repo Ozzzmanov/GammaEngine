@@ -1,44 +1,81 @@
-██████╗  █████╗ ███╗   ███╗███╗   ███╗ █████╗  
-██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗
-██║  ███╗███████║██╔████╔██║██╔████╔██║███████║
-██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
-╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
- ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//  ██████╗  █████╗ ███╗    ███╗███╗    ███╗ █████╗  
+//  ██╔════╝ ██╔══██╗████╗ ████║████╗ ████║██╔══██╗ 
+//  ██║  ███╗███████║██╔████╔██║██╔████╔██║███████║ 
+//  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║ 
+//  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║ 
+//   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝ 
 
 ================================================================================
-GAMMA ENGINE: CHANGE LOG & ARCHITECTURE OVERVIEW
+GAMMA ENGINE: CHANGELOG
 ================================================================================
 
-[ CURRENT VERSION: 0.3.1 ]
-[ DATE: 30.01.2026       ]
+[ CURRENT VERSION: 0.4.0 ]
+[ STATUS: GPU-DRIVEN EVOLUTION ]
+[ DATE: 20.02.2026           ]
 
-================================================================================
-HISTORY OF CHANGES
-================================================================================
+v0.4.0 — TRANSITION TO GPU-DRIVEN & ASYNCHRONY
+--------------------------------------------------------------------------------
+Fundamental overhaul of the rendering core and resource system.
 
-v0.3.1 - ARCHITECTURAL REFACTORING
+1. ENGINE CONFIGURATION SYSTEM:
+   - Added 'EngineConfig': full support for external settings via JSON ('engine.json').
+   - Dynamic graphics management: FOV, Draw Distance, VSync, Anisotropy.
+   - Keybindings moved to config (completely eliminating hardcoded keys in the source).
+
+2. ASYNCHRONY & MULTITHREADING:
+   - Implemented 'TaskScheduler': custom thread pool for background tasks.
+   - Asynchronous texture loading: engine no longer freezes when streaming assets.
+   - Thread-safe 'ResourceManager' utilizing 'shared_mutex' (RW-lock).
+
+3. GPU-DRIVEN RENDERING PIPELINE:
+   - Created 'RenderPipeline': the central hub managing all render passes.
+   - Switched to Indirect Drawing: utilizing 'DrawIndexedInstancedIndirect'.
+   - GPU Culling: Object culling (Frustum + Occlusion) moved to Compute Shaders.
+   - Implemented HZB (Hi-Z Buffer) system for efficient Occlusion Culling.
+
+4. TERRAIN MODERNIZATION:
+   - Added 'TerrainBaker': an offline converter that normalizes .cdata into optimized DDS caches.
+   - 'TerrainGpuScene': renders the entire map in a single Draw Call via Texture2DArrays.
+   - Dynamic height and normal reading directly in the shader from texture arrays.
+
+5. MODEL SYSTEM (STATIC MESH):
+   - Implemented support for GLTF and GLB formats via 'tiny_gltf'.
+   - Added 'ModelManager' for global geometry caching.
+   - Support for up to 3 LOD levels for every static entity.
+   - Instancing on steroids: thousands of objects rendered with minimal CPU overhead.
+
+6. GRAPHICS EFFECTS & OPTIMIZATION:
+   - Z-Prepass: initial depth pass to minimize Overdraw.
+   - Deferred Lighting: lighting calculated in a separate pass based on the G-buffer.
+   - Improved Samplers: support for 16x Anisotropy and MipLODBias for ultra-sharp textures.
+   - Timer Update: strict delta clamping to prevent "falling through the floor" during lag spikes.
+
+--------------------------------------------------------------------------------
+v0.3.1 — ARCHITECTURAL REFACTORING (Legacy)
+- Moved Camera to a dedicated class.
+- Implemented Action Mapping.
 --------------------------------------------------------------------------------
 Global code cleanup and Separation of Concerns.
-Goal: Decongest the main Engine class and eliminate the "God Object" pattern.
+Goal: Offload logic from the main Engine class.
 
 1. INPUT SYSTEM:
-   - Implemented Action Mapping system (binding actions to keys).
-   - Complete removal of hardcoded keys (VK_F1, 'W', etc.) from game logic.
-   - Abstraction over WinAPI: methods like IsActionActive() and IsActionTriggered().
+   - Implemented Action Mapping (binding actions to keys).
+   - Full removal of hardcoded keys (VK_F1, 'W', etc.) from game logic.
+   - WinAPI abstraction: convenient IsActionActive() and IsActionTriggered() methods.
 
 2. CAMERA SYSTEM MODULARITY:
-   - Movement logic, View/Projection matrix calculation, and Frustum Culling
-     moved from the engine core to a separate `Camera` class.
-   - Isolation of mathematics and Debug Camera mode management.
+   - Movement logic, View/Projection matrix calculation, and Frustum Culling moved
+     from the engine core to a standalone 'Camera' class.
+   - Isolation of math and debug mode management (Debug Camera).
 
 3. WORLD LOADER:
-   - Created `WorldLoader` class responsible for directory scanning, 
-     chunk coordinate parsing, and VLO discovery.
+   - Created 'WorldLoader' class responsible for directory scanning,
+     chunk coordinate parsing, and VLO (Very Large Object) discovery.
    - GammaEngine now acts as an orchestrator, delegating loading to the subsystem.
 
 4. USER INTERFACE (GUI):
-   - Debug information rendering (Debug Overlay) moved to a separate class
-     in the new `GUI/` directory.
+   - Debug information rendering (Debug Overlay) moved to a dedicated 
+     class within the new 'GUI/' directory.
 
 --------------------------------------------------------------------------------
 
@@ -47,121 +84,118 @@ v0.3 - OPTIMIZATION & WATER UPDATE
 Key Changes:
 
 1. RENDERING OPTIMIZATION (VISIBILITY CULLING):
-   - Implemented Frustum Culling (skipping objects outside the camera view).
-   - Implemented Distance Culling (hard cutoff for objects beyond draw distance).
-   - Performance boost: 5-10x FPS increase on large maps.
-   - Added dynamic controls: Render Distance (Z/X keys) and Optimization Toggle (F1).
+   - Implemented Frustum Culling (discarding objects outside the FOV).
+   - Implemented Distance Culling (hard cutoff of objects based on range).
+   - Performance boost: 5-10x increase in large-scale locations.
+   - Added dynamic controls: Draw Distance (Z/X keys) and Optimization Toggle (F1).
 
-2. WATER SYSTEM (WATER VLO):
-   - Full support for VLO (Very Large Objects) of type "Water".
-   - Parsing: Reads parameters from `.vlo` (XML) and geometry from `.odata` (Binary).
-   - Water Shader: Features normal maps, scrolling animations, reflections (Environment Map), and Fresnel effect.
-   - Integration: Water objects respect the Culling system (skipped if invisible or too far).
+2. WATER SYSTEM:
+   - Implemented full support for VLO (Very Large Objects) of "Water" type.
+   - Parsing: Reading parameters from '.vlo' (XML) and geometry from '.odata' (Binary).
+   - Water Shader: Normal maps, scrolling animation, Environment Map reflections, 
+     and Fresnel effect.
+   - Integration: Water respects the culling system (not rendered if not visible).
 
 3. CORE & ARCHITECTURE:
-   - Modularization: Separation of Entry Point (Main.cpp) and Engine Class (GammaEngine).
-   - Asynchronous Logger: Thread-safe logging to file and Debug Output (prevents rendering stalls).
-   - Robust Parsing: `DataSection` correctly handles floating-point numbers regardless of Windows system locale (fixed the comma/dot issue).
-   - Timer: Added delta smoothing for smoother camera movement and physics.
+   - Modularity: Separated entry point (Main.cpp) from the engine class (GammaEngine).
+   - Async Logger: Thread-safe logging to file and debug window 
+     (prevents UI freezes during text output).
+   - Safe Parsing: 'DataSection' correctly handles floating-point numbers 
+     regardless of Windows system locale (fixed comma/period decimal issue).
+   - Timer: Added delta smoothing for fluid camera movement and physics.
 
 4. RESOURCES:
-   - Rewritten BwBinSection parser: Optimized memory safety and lookup speed (unordered_map).
-   - Optimized HeightMap: Fast decoding for QPNG heightmaps.
-   - Dynamic Buffers: ConstantBuffers switched to DYNAMIC mode (Map/Unmap) for efficient frequent updates.
+   - Rewrote BwBinSection parser: Optimized memory safety and speed.
+   - Optimized HeightMap: Fast decoding of QPNG heightmaps.
+   - Dynamic Buffers: ConstantBuffers moved to DYNAMIC mode (Map/Unmap) 
+     for efficient per-frame updates.
 
 --------------------------------------------------------------------------------
 
-v0.2 - TERRAIN & TEXTURING (LEGACY BASE)
+v0.2 - LANDSCAPE & TEXTURING (BASE)
 --------------------------------------------------------------------------------
 - Implemented basic Terrain rendering.
 - Texture Arrays system for chunk texturing (Single Draw Call).
 - Dual Blend Maps: Blending up to 8 unique layers per chunk.
-- Parsing of basic geometry (.cdata) and world settings (space.settings).
-- Basic Camera implementation (WASD + Mouse).
+- Parsing of base geometry (.cdata) and world settings (space.settings).
+- Basic camera implementation (WASD + Mouse).
 
 
 ================================================================================
 ARCHITECTURAL DIFFERENCES FROM ORIGINAL TECHNOLOGY (BigWorld)
 ================================================================================
 
-1. RENDERING BACKEND (GRAPHICS API)
+1. GRAPHICS API (RENDERING BACKEND)
 --------------------------------------------------------------------------------
 [ORIGINAL]
 Uses DirectX 9.0c.
-- Fixed Function Pipeline or obsolete shaders (SM 2.0/3.0).
-- Lack of hardware support for modern GPU features.
+- Fixed-function pipeline or legacy shaders (SM 2.0/3.0).
+- Lack of hardware-level support for modern GPU features.
 - Dependency on deprecated D3DX9 libraries.
 
 [GAMMA ENGINE]
 Uses DirectX 11.
 - Fully Programmable Pipeline.
-- Uses Shader Model 5.0 (HLSL).
+- Use of Shader Model 5.0 (HLSL).
 - Support for modern buffer formats and state objects.
 
 2. TERRAIN TEXTURING SYSTEM
 --------------------------------------------------------------------------------
 [ORIGINAL]
-Multi-Pass Rendering or Texture Atlases.
+Multi-pass rendering or Texture Atlases.
 - DX9 Limitation: Inability to bind many textures to a single shader.
-- Rendering: Terrain was drawn in multiple passes (4 layers at a time) 
-  or used complex and heavy texture atlases.
-- Performance drop when using a large number of blend layers.
+- Rendering: Terrain was drawn in multiple passes (4 layers each) or 
+  used complex atlases.
+- Performance drops with a high number of layers.
 
 [GAMMA ENGINE]
-Texture Arrays (Texture2DArray).
+Texture Arrays.
 - All chunk textures are loaded into a single resource array.
-- Rendering is performed in a Single Draw Call regardless of the number of 
-  layers (up to 8 and more).
-- The shader selects the required layer by index from the array, significantly 
-  reducing CPU overhead and bus traffic.
+- Rendering is performed in a SINGLE pass (Single Draw Call) regardless of 
+  the number of layers (up to 8 and more).
+- Shader selects the layer by index, significantly reducing CPU overhead.
 
 3. LAYER BLENDING
 --------------------------------------------------------------------------------
 [ORIGINAL]
 Using a single mask (RGBA) limited the number of layers to 4.
-Adding a 5th layer required an additional geometry pass drawn on top of the 
-previous one (Overdraw).
+A 5th layer required an additional geometry pass (Overdraw).
 
 [GAMMA ENGINE]
-Dual Blend Maps System.
-- Uses two blend textures simultaneously.
-- This allows blending up to 8 unique layers (textures) in a single pixel 
-  without redrawing geometry.
+Dual Blend Maps system.
+- Two blend textures are used simultaneously.
+- Allows blending up to 8 layers in a single pixel without re-drawing geometry.
 
-4. MATHEMATICS FOUNDATION
+4. MATHEMATICAL FOUNDATION
 --------------------------------------------------------------------------------
 [ORIGINAL]
-D3DX Math Library.
-- Obsolete mathematical functions executed on the FPU.
-- Slow vector and matrix operations.
+D3DX Math library.
+- Legacy functions executed on the FPU. Slow vector operations.
 
 [GAMMA ENGINE]
 DirectXMath (SIMD).
-- Uses SSE2/AVX processor instructions for vector calculations.
-- High performance in physics and transformation calculations (World/View/Proj).
+- Utilizes SSE2/AVX CPU instructions.
+- High performance for physics and transformations.
 
-5. FILE AND DATA HANDLING
+5. FILE & DATA HANDLING
 --------------------------------------------------------------------------------
 [ORIGINAL]
-Complex dependency on Python scripts and proprietary XML/Binary parsers.
-- Hardcoded binding to the `res/` folder structure.
-- Use of outdated ZIP archiving mechanisms.
+Complex dependency on Python and proprietary parsers.
+- Hardcoded binding to 'res/' folder structures.
+- Legacy archiving mechanisms.
 
 [GAMMA ENGINE]
 Native Modern C++ (C++17/20).
-- Direct parsing of binary formats (.cdata, .chunk) via custom classes 
-  (BwPackedSection).
-- Use of std::filesystem for cross-platform path handling.
-- No external dependencies (except system libs and DirectXTK).
-- On-the-fly decoding of QPNG (compressed heightmaps) without conversion to BMP.
+- Direct parsing of binary formats (.cdata, .chunk) via custom classes.
+- Use of std::filesystem for cross-platform compatibility.
+- On-the-fly decoding of compressed heightmaps (QPNG) without conversion.
 
 6. MEMORY MANAGEMENT
 --------------------------------------------------------------------------------
 [ORIGINAL]
-Use of raw pointers and manual reference counting (AddRef/Release), 
-which often led to memory leaks.
+Raw pointers and manual reference counting, often leading to memory leaks.
 
 [GAMMA ENGINE]
 RAII and Smart Pointers.
-- Pervasive use of std::unique_ptr and ComPtr (for DX11 resources).
-- Automatic resource release when unloading a chunk or closing the game.
+- Widespread use of std::unique_ptr and ComPtr.
+- Automatic resource deallocation.

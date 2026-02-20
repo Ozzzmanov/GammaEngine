@@ -32,6 +32,8 @@ public:
     bool IsActionActive(const std::string& actionName) const; // Зажата ли кнопка действия?
     bool IsActionTriggered(const std::string& actionName);    // Была ли нажата (один раз)?
 
+    void ClearBindings() { m_actionMap.clear(); }
+
 private:
     POINT m_prevMousePos;
     DirectX::XMFLOAT2 m_mouseDelta;

@@ -1,134 +1,149 @@
-// ===================================================================================
-// Terrain.hlsl (ARRAY MODE - 24 LAYERS)
-// Исправлено: Жесткое выравнивание памяти (packoffset) и порядок компонентов.
-// ===================================================================================
-
 cbuffer TransformBuffer : register(b0) {
-    matrix World;
+    matrix World; 
     matrix View;
     matrix Projection;
 };
 
-// C++ Структура:
-// TextureIndices[6] -> 6 векторов по 16 байт = 96 байт. (Регистры c0 - c5)
-// UProj[24]         -> Начинается с 96-го байта. (Регистр c6)
-// VProj[24]         -> Начинается с 96 + 384 = 480-го байта. (Регистр c30)
-
-cbuffer LayerInfo : register(b1) {
-    // Жестко указываем начало данных (c0)
-    int4 TextureIndices[6] : packoffset(c0);
-    
-    // Жестко указываем начало UProj (c6) - это ГАРАНТИРУЕТ, что шейдер будет читать там где надо
-    float4 UProj[24]       : packoffset(c6);
-    
-    // Жестко указываем начало VProj (c30) (6 + 24 = 30)
-    float4 VProj[24]       : packoffset(c30);
+struct ChunkGpuData {
+    float3 WorldPos;      
+    uint   ArraySlice; 
+    uint   MaterialIndices[24]; 
 };
 
+struct TerrainMaterial {
+    float4 UProj;
+    float4 VProj;
+    uint   DiffuseIndex;
+    float3 Padding;
+};
+
+StructuredBuffer<ChunkGpuData> Chunks             : register(t0);
+StructuredBuffer<uint>         VisibleIndices   : register(t1);
+StructuredBuffer<TerrainMaterial> GlobalMaterials : register(t11); 
+
+Texture2DArray<float>  HeightArray  : register(t2);
+Texture2DArray<float>  HoleArray    : register(t3);
+
+Texture2DArray<float4> IndexArray   : register(t4); 
+Texture2DArray<float4> WeightArray  : register(t5); 
+
+Texture2DArray DiffuseTextures      : register(t10);
+
+SamplerState SamplerWrap  : register(s0); 
+SamplerState SamplerClamp : register(s1); 
+
 struct VS_INPUT {
-    float3 Pos : POSITION;
-    float2 UV  : TEXCOORD0; 
-    float3 Norm : NORMAL;
+    float3 Pos      : POSITION;
+    float3 Color    : COLOR;
+    float3 Normal   : NORMAL;
+    float2 UV       : TEXCOORD0;
+    uint InstanceID : SV_InstanceID; 
 };
 
 struct PS_INPUT {
-    float4 Pos : SV_POSITION;
-    float3 WorldPos : TEXCOORD0; 
-    float2 ChunkUV : TEXCOORD1;
-    float3 Norm : NORMAL;
+    float4 Pos      : SV_POSITION;
+    float3 WorldPos : TEXCOORD0;
+    float2 RawUV    : TEXCOORD1;  
+    float3 Normal   : NORMAL;
+    nointerpolation uint ChunkID : TEXCOORD2; 
 };
 
-// Текстурный массив
-Texture2DArray TextureArray : register(t0);
+struct PS_OUTPUT {
+    float4 Albedo   : SV_Target0;
+    float4 Normal   : SV_Target1;
+};
 
-// Карты смешивания (6 штук для 24 слоев)
-Texture2D BlendMap1 : register(t1); 
-Texture2D BlendMap2 : register(t2); 
-Texture2D BlendMap3 : register(t3); 
-Texture2D BlendMap4 : register(t4);
-Texture2D BlendMap5 : register(t5);
-Texture2D BlendMap6 : register(t6);
-
-SamplerState Sampler : register(s0);
-
-// --- Vertex Shader ---
 PS_INPUT VSMain(VS_INPUT input) {
     PS_INPUT output;
-    float4 worldPos = mul(float4(input.Pos, 1.0f), World);
-    output.WorldPos = worldPos.xyz;
-    output.Pos = mul(worldPos, View);
+    uint chunkID = VisibleIndices[input.InstanceID];
+    ChunkGpuData chunk = Chunks[chunkID];
+
+    float3 uvw = float3(input.UV, chunk.ArraySlice);
+    float height = HeightArray.SampleLevel(SamplerClamp, uvw, 0).r;
+
+    float3 worldPos = input.Pos + chunk.WorldPos;
+    worldPos.y = height; 
+
+    output.WorldPos = worldPos;
+    output.Pos = mul(float4(worldPos, 1.0f), View);
     output.Pos = mul(output.Pos, Projection);
-    output.ChunkUV = input.UV;
-    output.Norm = mul(input.Norm, (float3x3)World);
+    output.RawUV = input.UV;
+    output.ChunkID = chunkID; 
+
+    float pixelStep = 1.0f / 36.0f; 
+    float hL = HeightArray.SampleLevel(SamplerClamp, float3(saturate(input.UV.x - pixelStep), input.UV.y, chunk.ArraySlice), 0).r;
+    float hR = HeightArray.SampleLevel(SamplerClamp, float3(saturate(input.UV.x + pixelStep), input.UV.y, chunk.ArraySlice), 0).r;
+    float hD = HeightArray.SampleLevel(SamplerClamp, float3(input.UV.x, saturate(input.UV.y - pixelStep), chunk.ArraySlice), 0).r;
+    float hU = HeightArray.SampleLevel(SamplerClamp, float3(input.UV.x, saturate(input.UV.y + pixelStep), chunk.ArraySlice), 0).r;
+    
+    output.Normal = normalize(float3(hL - hR, 2.0f * (100.0f / 36.0f), hD - hU));
     return output;
 }
 
-// --- Pixel Shader ---
-float4 PSMain(PS_INPUT input) : SV_Target {
-    // 1. Читаем веса из 6 карт смешивания
-    float4 b1 = BlendMap1.Sample(Sampler, input.ChunkUV);
-    float4 b2 = BlendMap2.Sample(Sampler, input.ChunkUV);
-    float4 b3 = BlendMap3.Sample(Sampler, input.ChunkUV);
-    float4 b4 = BlendMap4.Sample(Sampler, input.ChunkUV);
-    float4 b5 = BlendMap5.Sample(Sampler, input.ChunkUV);
-    float4 b6 = BlendMap6.Sample(Sampler, input.ChunkUV);
-
-    // Собираем веса в массив (BGRA порядок, как в C++)
-    float weights[24];
-    weights[0] = b1.b; weights[1] = b1.g; weights[2] = b1.r; weights[3] = b1.a;
-    weights[4] = b2.b; weights[5] = b2.g; weights[6] = b2.r; weights[7] = b2.a;
-    weights[8] = b3.b; weights[9] = b3.g; weights[10] = b3.r; weights[11] = b3.a;
-    weights[12] = b4.b; weights[13] = b4.g; weights[14] = b4.r; weights[15] = b4.a;
-    weights[16] = b5.b; weights[17] = b5.g; weights[18] = b5.r; weights[19] = b5.a;
-    weights[20] = b6.b; weights[21] = b6.g; weights[22] = b6.r; weights[23] = b6.a;
-
-    // 2. Нормализация
-    float sum = 0;
-    for(int j=0; j<24; ++j) sum += weights[j];
-
-    if (sum < 0.001) {
-        weights[0] = 1.0f; 
-    } else if (sum > 1.0) {
-        float invSum = 1.0 / sum;
-        for(int j=0; j<24; ++j) weights[j] *= invSum;
-    }
-
-    // 3. Смешивание
-    float3 color = float3(0, 0, 0);
-
+float3 SampleTerrainColor(float4 indexRaw, float4 weightRaw, float3 worldPos, float3 ddxWP, float3 ddyWP, ChunkGpuData chunk) {
+    uint4 localIndices = uint4(round(indexRaw * 255.0f));
+    float3 color = 0.0f;
+    
     [unroll]
-    for (int i = 0; i < 24; ++i) {
-        if (weights[i] > 0.001) {
-            int vecIdx = i / 4;
-            int compIdx = i % 4;
+    for (int i = 0; i < 4; ++i) {
+        float w = weightRaw[i];
+        
+        [branch] 
+        if (w > 0.001f) {
+            uint matID = chunk.MaterialIndices[localIndices[i]];
+            TerrainMaterial mat = GlobalMaterials[matID];
             
-            // --- ИСПРАВЛЕНИЕ: Выбор компонента ---
-            // В C++ мы писали индексы в порядке: [0]=Z(B), [1]=Y(G), [2]=X(R), [3]=W(A)
-            // Шейдер читает int4 как xyzw. Нам нужно "перевернуть" логику чтения, 
-            // чтобы она совпала с записью в C++.
+            float2 texUV = float2(dot(float4(worldPos, 1.0f), mat.UProj), dot(float4(worldPos, 1.0f), mat.VProj));
+            float2 dx = float2(dot(ddxWP, mat.UProj.xyz), dot(ddxWP, mat.VProj.xyz));
+            float2 dy = float2(dot(ddyWP, mat.UProj.xyz), dot(ddyWP, mat.VProj.xyz));
             
-            int texIndex = 0;
-            int4 indicesVec = TextureIndices[vecIdx];
-
-            if (compIdx == 0) texIndex = indicesVec.z;      // Layer 0 (Blue channel) -> stored in .z
-            else if (compIdx == 1) texIndex = indicesVec.y; // Layer 1 (Green channel) -> stored in .y
-            else if (compIdx == 2) texIndex = indicesVec.x; // Layer 2 (Red channel) -> stored in .x
-            else texIndex = indicesVec.w;                   // Layer 3 (Alpha channel) -> stored in .w
-
-            // Расчет UV с использованием правильного UProj
-            float2 uv = float2(
-                dot(float4(input.WorldPos, 1.0), UProj[i]),
-                dot(float4(input.WorldPos, 1.0), VProj[i])
-            );
-
-            color += TextureArray.Sample(Sampler, float3(uv, texIndex)).rgb * weights[i];
+            color += DiffuseTextures.SampleGrad(SamplerWrap, float3(texUV, mat.DiffuseIndex), dx, dy).rgb * w;
         }
     }
+    return color;
+}
 
-    float3 norm = normalize(input.Norm);
-    float3 lightDir = normalize(float3(0.5, 1.0, -0.5));
-    float NdotL = max(dot(norm, lightDir), 0.0);
-    float3 lighting = float3(0.4, 0.4, 0.4) + float3(0.6, 0.6, 0.6) * NdotL;
+PS_OUTPUT PSMain(PS_INPUT input) {
+    PS_OUTPUT output;
 
-    return float4(color * lighting, 1.0);
+    ChunkGpuData chunk = Chunks[input.ChunkID];
+
+    float holeValue = HoleArray.SampleLevel(SamplerClamp, float3(input.RawUV, chunk.ArraySlice), 0).r;
+    clip(holeValue - 0.5f); 
+
+    float3 ddxWP = ddx(input.WorldPos);
+    float3 ddyWP = ddy(input.WorldPos);
+
+    float2 texSize = 128.0f; 
+    float2 pixelUV = input.RawUV * texSize - 0.5f; 
+    
+    int2 p00 = floor(pixelUV); 
+    float2 f = frac(pixelUV);  
+
+    int3 c00 = int3(clamp(p00 + int2(0, 0), 0, 127), chunk.ArraySlice);
+    int3 c10 = int3(clamp(p00 + int2(1, 0), 0, 127), chunk.ArraySlice);
+    int3 c01 = int3(clamp(p00 + int2(0, 1), 0, 127), chunk.ArraySlice);
+    int3 c11 = int3(clamp(p00 + int2(1, 1), 0, 127), chunk.ArraySlice);
+
+    float4 i00 = IndexArray.Load(int4(c00, 0));
+    float4 i10 = IndexArray.Load(int4(c10, 0));
+    float4 i01 = IndexArray.Load(int4(c01, 0));
+    float4 i11 = IndexArray.Load(int4(c11, 0));
+
+    float4 w00 = WeightArray.Load(int4(c00, 0));
+    float4 w10 = WeightArray.Load(int4(c10, 0));
+    float4 w01 = WeightArray.Load(int4(c01, 0));
+    float4 w11 = WeightArray.Load(int4(c11, 0));
+
+    float3 color00 = SampleTerrainColor(i00, w00, input.WorldPos, ddxWP, ddyWP, chunk);
+    float3 color10 = SampleTerrainColor(i10, w10, input.WorldPos, ddxWP, ddyWP, chunk);
+    float3 color01 = SampleTerrainColor(i01, w01, input.WorldPos, ddxWP, ddyWP, chunk);
+    float3 color11 = SampleTerrainColor(i11, w11, input.WorldPos, ddxWP, ddyWP, chunk);
+
+    float3 finalColor = lerp(lerp(color00, color10, f.x), lerp(color01, color11, f.x), f.y);
+
+    output.Albedo = float4(finalColor, 1.0f);
+    output.Normal = float4(normalize(input.Normal), 1.0f);
+
+    return output;
 }

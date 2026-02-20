@@ -4,11 +4,9 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
-//
 // ================================================================================
 // Timer.cpp
 // ================================================================================
-
 #include "Timer.h"
 
 Timer::Timer()
@@ -27,11 +25,6 @@ void Timer::Reset() {
     m_prevTime = m_startTime;
     m_totalTime = 0.0f;
     m_deltaTime = 0.0f;
-
-    // Заполняем буфер средним значением (например 60 FPS)
-    for (int i = 0; i < MAX_SAMPLE_COUNT; ++i) {
-        m_deltaBuffer[i] = 1.0f / 60.0f;
-    }
 }
 
 void Timer::Tick() {
@@ -43,19 +36,16 @@ void Timer::Tick() {
 
     if (deltaCounts < 0) deltaCounts = 0;
 
-    // Сырая дельта
-    float rawDelta = (float)(deltaCounts * m_secondsPerCount);
+    // Берем сырую дельту 
+    m_deltaTime = (float)(deltaCounts * m_secondsPerCount);
 
-    // Сглаживание
-    m_deltaBuffer[m_sampleIndex] = rawDelta;
-    m_sampleIndex = (m_sampleIndex + 1) % MAX_SAMPLE_COUNT;
-
-    float sum = 0.0f;
-    for (int i = 0; i < MAX_SAMPLE_COUNT; ++i) {
-        sum += m_deltaBuffer[i];
+    // FIX ME переделать. ВАЖНО: Защита от "Спирали смерти" и провалов под текстуры!
+    // Если кадр длился дольше 1/10 секунды (зависание, перетаскивание окна),
+    // мы жестко обрезаем дельту, чтобы физика и движение не взорвались.
+    if (m_deltaTime > 0.1f) {
+        m_deltaTime = 0.1f;
     }
-    m_deltaTime = sum / MAX_SAMPLE_COUNT;
 
-    // Общее время считаем точно от старта, чтобы не накапливать погрешность float
+    // Общее время считаем точно от старта
     m_totalTime = (float)((currTime - m_startTime) * m_secondsPerCount);
 }

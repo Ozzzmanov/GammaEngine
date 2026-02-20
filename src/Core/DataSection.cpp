@@ -95,7 +95,7 @@ void DataSection::ParseXMLRecursive(const std::string& content, size_t& pos, Dat
             size_t endComment = content.find("-->", startTag);
             if (endComment != std::string::npos) {
                 pos = endComment + 3;
-                continue; // Теперь continue внутри цикла while
+                continue;
             }
         }
 

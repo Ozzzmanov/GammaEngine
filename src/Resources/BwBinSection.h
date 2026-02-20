@@ -30,6 +30,9 @@ public:
     // Получить данные секции по имени (например "alpha" или "rigid")
     bool GetSectionData(const std::string& name, std::vector<uint8_t>& outData);
 
+    const std::unordered_map<std::string, SectionEntry>& GetSections() const { return m_sections; }
+    const std::vector<uint8_t>& GetRawData() const { return m_storage; }
+
 private:
     BwBinSection() = default;
 
