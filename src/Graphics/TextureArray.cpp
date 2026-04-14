@@ -4,15 +4,16 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//
 // ================================================================================
 // TextureArray.cpp
 // ================================================================================
 #include "TextureArray.h"
 #include "../Core/Logger.h"
-#include "../Graphics/DDSTextureLoader.h"
-#include <filesystem>
-#include <vector>
 #include "../Core/ResourceManager.h"
+#include <filesystem>
+#include <DDSTextureLoader.h>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -20,48 +21,29 @@ TextureArray::TextureArray(ID3D11Device* device, ID3D11DeviceContext* context)
     : m_device(device), m_context(context) {
 }
 
-ID3D11Texture2D* TextureArray::CreateSolidTexture(int width, int height, DXGI_FORMAT format, uint32_t color) {
-    D3D11_TEXTURE2D_DESC desc = {};
-    desc.Width = width;
-    desc.Height = height;
-    desc.MipLevels = 1;
-    desc.ArraySize = 1;
-    desc.Format = format;
-    desc.SampleDesc.Count = 1;
-    desc.Usage = D3D11_USAGE_DEFAULT;
-    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-    // Генерируем массив пикселей
-    std::vector<uint32_t> pixels(width * height, color);
-
-    D3D11_SUBRESOURCE_DATA initData = {};
-    initData.pSysMem = pixels.data();
-    initData.SysMemPitch = width * sizeof(uint32_t);
-
-    ID3D11Texture2D* tex = nullptr;
-    // Используем m_device текущего класса
-    HRESULT hr = m_device->CreateTexture2D(&desc, &initData, &tex);
-
-    if (FAILED(hr)) {
-        return nullptr;
-    }
-    return tex;
-}
-
-bool TextureArray::Initialize(const std::vector<std::string>& filenames) {
+bool TextureArray::Initialize(const std::vector<std::string>& filenames, int targetW, int targetH) {
     if (filenames.empty()) return false;
 
-    // Вектор для исходных текстур
+    D3D11_TEXTURE2D_DESC arrayDesc = {};
+    arrayDesc.Width = (targetW > 0) ? targetW : DEFAULT_RESOLUTION;
+    arrayDesc.Height = (targetH > 0) ? targetH : DEFAULT_RESOLUTION;
+    arrayDesc.MipLevels = 1;
+    arrayDesc.ArraySize = static_cast<UINT>(filenames.size());
+    arrayDesc.Format = DXGI_FORMAT_BC2_UNORM;
+    arrayDesc.SampleDesc.Count = 1;
+    arrayDesc.Usage = D3D11_USAGE_DEFAULT;
+    arrayDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    arrayDesc.CPUAccessFlags = 0;
+    arrayDesc.MiscFlags = 0;
+
     std::vector<ComPtr<ID3D11Texture2D>> sourceTextures(filenames.size());
-    D3D11_TEXTURE2D_DESC targetDesc = {};
-    bool hasTarget = false;
+    bool formatFound = false;
 
-    Logger::Info(LogCategory::Texture, "--- TextureArray Init Start (" + std::to_string(filenames.size()) + " textures) ---");
-
+    // ПЕРВАЯ ПОПЫТКА ЗАГРУЗКИ СЛОЕВ
     for (size_t i = 0; i < filenames.size(); ++i) {
-        // Используем ResourceManager, который сделает Resize и компрессию в кэш.
-        ID3D11ShaderResourceView* srv = ResourceManager::Get().GetOrCacheTexture(filenames[i]);
+        if (filenames[i].empty()) continue;
 
+        ID3D11ShaderResourceView* srv = ResourceManager::Get().GetOrCacheTexture(filenames[i], arrayDesc.Width, arrayDesc.Height);
         if (srv) {
             ComPtr<ID3D11Resource> res;
             srv->GetResource(&res);
@@ -71,80 +53,65 @@ bool TextureArray::Initialize(const std::vector<std::string>& filenames) {
                 D3D11_TEXTURE2D_DESC desc;
                 tex->GetDesc(&desc);
 
-                if (!hasTarget) {
-                    targetDesc = desc;
-                    hasTarget = true;
-                    Logger::Info(LogCategory::Texture, "  [MASTER] " + filenames[i] + " (" + std::to_string(desc.Width) + "x" + std::to_string(desc.Height) + ")");
-                    sourceTextures[i] = tex;
+                // Захватываем формат и мип-уровни от первой успешной текстуры правильного размера
+                if (!formatFound && desc.Width == arrayDesc.Width && desc.Height == arrayDesc.Height) {
+                    arrayDesc.Format = desc.Format;
+                    arrayDesc.MipLevels = desc.MipLevels;
+                    formatFound = true;
                 }
-                else {
-                    if (desc.Width != targetDesc.Width || desc.Height != targetDesc.Height) {
-                        Logger::Error(LogCategory::Texture, "  [MISMATCH] " + filenames[i] + " (Expected " + std::to_string(targetDesc.Width) + ", got " + std::to_string(desc.Width) + ")");
-                        sourceTextures[i] = nullptr;
-                    }
-                    else {
-                        sourceTextures[i] = tex;
-                    }
-                }
+                sourceTextures[i] = tex;
             }
-        }
-        else {
-            Logger::Error(LogCategory::Texture, "  [FAIL] Failed to load/cache: " + filenames[i]);
-            sourceTextures[i] = nullptr;
         }
     }
 
-    if (!hasTarget) {
-        Logger::Error(LogCategory::Texture, "CRITICAL: No valid textures loaded for array!");
+    HRESULT hr = m_device->CreateTexture2D(&arrayDesc, nullptr, m_arrayTexture.GetAddressOf());
+    if (FAILED(hr)) {
+        GAMMA_LOG_ERROR(LogCategory::Texture, "Failed to create Texture2DArray!");
         return false;
     }
 
-    // Создаем массив
-    D3D11_TEXTURE2D_DESC arrayDesc = targetDesc;
-    arrayDesc.ArraySize = static_cast<UINT>(filenames.size());
-    arrayDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    arrayDesc.Usage = D3D11_USAGE_DEFAULT;
-    arrayDesc.CPUAccessFlags = 0;
-    arrayDesc.MiscFlags = 0;
-
-    HRESULT hr = m_device->CreateTexture2D(&arrayDesc, nullptr, m_arrayTexture.GetAddressOf());
-    if (FAILED(hr)) return false;
-
-    // Создаем розовую заглушку
-    ComPtr<ID3D11Texture2D> placeholder;
-    placeholder.Attach(CreateSolidTexture(targetDesc.Width, targetDesc.Height, targetDesc.Format, 0xFFFF00FF));
-
-    // Копируем данные в массив
+    // 2. ЗАПОЛНЕНИЕ МАССИВА И СПАСАТЕЛЬНЫЙ КРУГ
     for (UINT i = 0; i < sourceTextures.size(); ++i) {
         ID3D11Texture2D* src = sourceTextures[i].Get();
 
-        // Пропускаем пустые текстуры
-        if (!src) {
-            Logger::Error(LogCategory::Texture, "TextureArray: Slot " + std::to_string(i) + " is NULL. Skipping.");
-            continue;
-        }
+        if (src) {
+            D3D11_TEXTURE2D_DESC srcDesc;
+            src->GetDesc(&srcDesc);
 
-        D3D11_TEXTURE2D_DESC srcDesc;
-        src->GetDesc(&srcDesc);
+            // FIXME: Операция Спасения (Rescue Resize).
+            // Если текстура не совпадает по размеру, мы заставляем ResourceManager сделать ресайз на лету.
+            // Это очень медленная операция для основного потока. В идеале ассеты должны быть подготовлены заранее.
+            if (srcDesc.Width != arrayDesc.Width || srcDesc.Height != arrayDesc.Height) {
+                GAMMA_LOG_WARN(LogCategory::Texture, "Texture mismatch at slot " + std::to_string(i) + ". Forcing rescue resize...");
 
-        // Запрещаем копирование текстур разного размера или формата. FIXME сделать надежную защиту.
-        if (srcDesc.Width != targetDesc.Width ||
-            srcDesc.Height != targetDesc.Height ||
-            srcDesc.Format != targetDesc.Format)
-        {
-            Logger::Error(LogCategory::Texture, "TextureArray: Mismatch at slot " + std::to_string(i) +
-                ". Expected " + std::to_string(targetDesc.Width) + "x" + std::to_string(targetDesc.Height) +
-                ", got " + std::to_string(srcDesc.Width) + "x" + std::to_string(srcDesc.Height) + ". SKIPPING COPY!");
-            continue;
-        }
+                ID3D11ShaderResourceView* rescuedSrv = ResourceManager::Get().GetOrCacheTexture(filenames[i], arrayDesc.Width, arrayDesc.Height);
+                if (rescuedSrv) {
+                    ComPtr<ID3D11Resource> res;
+                    rescuedSrv->GetResource(&res);
 
-        // Безопасное копирование
-        UINT mipsToCopy = std::min(targetDesc.MipLevels, srcDesc.MipLevels);
-        for (UINT mip = 0; mip < mipsToCopy; ++mip) {
-            m_context->CopySubresourceRegion(
-                m_arrayTexture.Get(), D3D11CalcSubresource(mip, i, targetDesc.MipLevels),
-                0, 0, 0, src, mip, nullptr
-            );
+                    ComPtr<ID3D11Texture2D> rescuedTex;
+                    if (SUCCEEDED(res.As(&rescuedTex))) {
+                        rescuedTex->GetDesc(&srcDesc);
+                        if (srcDesc.Width == arrayDesc.Width && srcDesc.Height == arrayDesc.Height) {
+                            src = rescuedTex.Get();
+                        }
+                    }
+                }
+            }
+
+            // Копируем текстуру в слой массива (со всеми мип-уровнями)
+            if (srcDesc.Width == arrayDesc.Width && srcDesc.Height == arrayDesc.Height && srcDesc.Format == arrayDesc.Format) {
+                UINT mipsToCopy = std::min(arrayDesc.MipLevels, srcDesc.MipLevels);
+                for (UINT mip = 0; mip < mipsToCopy; ++mip) {
+                    m_context->CopySubresourceRegion(
+                        m_arrayTexture.Get(), D3D11CalcSubresource(mip, i, arrayDesc.MipLevels),
+                        0, 0, 0, src, mip, nullptr
+                    );
+                }
+            }
+            else {
+                GAMMA_LOG_ERROR(LogCategory::Texture, "Rescue failed for: " + filenames[i] + ". Using empty layer.");
+            }
         }
     }
 
@@ -158,6 +125,26 @@ bool TextureArray::Initialize(const std::vector<std::string>& filenames) {
 
     hr = m_device->CreateShaderResourceView(m_arrayTexture.Get(), &srvDesc, m_srv.GetAddressOf());
 
-    Logger::Info(LogCategory::Texture, "--- TextureArray Init Complete ---");
     return SUCCEEDED(hr);
+}
+
+bool TextureArray::LoadFromBakedFile(const std::string& filePath) {
+    std::wstring wPath(filePath.begin(), filePath.end());
+
+    // Освобождаем старые ресурсы
+    m_arrayTexture.Reset();
+    m_srv.Reset();
+
+    // Загружаем готовый массив (со всеми мипами и слоями) за ОДИН вызов напрямую в VRAM
+    ID3D11Resource* res = nullptr;
+    HRESULT hr = DirectX::CreateDDSTextureFromFile(m_device.Get(), wPath.c_str(), &res, m_srv.GetAddressOf());
+
+    if (SUCCEEDED(hr) && res) {
+        res->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(m_arrayTexture.GetAddressOf()));
+        res->Release();
+        return true;
+    }
+
+    GAMMA_LOG_ERROR(LogCategory::Texture, "Failed to load baked array: " + filePath);
+    return false;
 }

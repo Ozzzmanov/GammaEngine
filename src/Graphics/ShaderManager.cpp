@@ -4,6 +4,7 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//
 // ================================================================================
 // ShaderManager.cpp
 // ================================================================================
@@ -26,11 +27,12 @@ ID3D11VertexShader* ShaderManager::GetVertexShader(const std::string& path, ID3D
     ComPtr<ID3DBlob> blob, error;
     std::wstring wpath(path.begin(), path.end());
 
+    // FIXME: Компиляция в рантайме! Должно быть чтение D3DReadFileToBlob для .cso файлов.
     HRESULT hr = D3DCompileFromFile(wpath.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
         "VS", "vs_5_0", 0, 0, &blob, &error);
 
     if (FAILED(hr)) {
-        if (error) Logger::Error(LogCategory::Render, (char*)error->GetBufferPointer());
+        if (error) GAMMA_LOG_ERROR(LogCategory::Render, reinterpret_cast<char*>(error->GetBufferPointer()));
         return nullptr;
     }
 
@@ -45,20 +47,17 @@ ID3D11VertexShader* ShaderManager::GetVertexShader(const std::string& path, ID3D
 }
 
 ID3D11PixelShader* ShaderManager::GetPixelShader(const std::string& path, const std::vector<std::string>& defines) {
-    // Создаем уникальный ключ кэша
     std::string key = path;
     std::vector<D3D_SHADER_MACRO> macros;
 
     for (const auto& def : defines) {
         key += "|" + def;
-        macros.push_back({ def.c_str(), "1" }); // { "HAS_NORMAL", "1" }
+        macros.push_back({ def.c_str(), "1" });
     }
     macros.push_back({ NULL, NULL }); // Terminator
 
-    // Проверка кэша
     if (m_psCache.count(key)) return m_psCache[key].Get();
 
-    // Компиляция
     ComPtr<ID3DBlob> blob, error;
     std::wstring wpath(path.begin(), path.end());
 
@@ -66,8 +65,12 @@ ID3D11PixelShader* ShaderManager::GetPixelShader(const std::string& path, const 
         "PS", "ps_5_0", 0, 0, &blob, &error);
 
     if (FAILED(hr)) {
-        if (error) Logger::Error(LogCategory::Render, "PS Compile Error: " + std::string((char*)error->GetBufferPointer()));
-        else Logger::Error(LogCategory::Render, "PS File not found: " + path);
+        if (error) {
+            GAMMA_LOG_ERROR(LogCategory::Render, "PS Compile Error: " + std::string(reinterpret_cast<char*>(error->GetBufferPointer())));
+        }
+        else {
+            GAMMA_LOG_ERROR(LogCategory::Render, "PS File not found: " + path);
+        }
         return nullptr;
     }
 

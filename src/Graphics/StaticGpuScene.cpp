@@ -4,11 +4,18 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//
 // ================================================================================
 // StaticGpuScene.cpp
 // ================================================================================
 #include "StaticGpuScene.h"
 #include "../Core/Logger.h"
+#include "ModelManager.h"
+#include <algorithm>
+
+struct BatchGpuInfo {
+    uint32_t PackedData;
+};
 
 StaticGpuScene::StaticGpuScene(ID3D11Device* device, ID3D11DeviceContext* context)
     : m_device(device), m_context(context) {
@@ -26,8 +33,6 @@ void StaticGpuScene::BuildGpuBuffers() {
     std::vector<InstanceData> flatInstances;
     std::vector<EntityMetaData> metaDataList;
     std::vector<IndirectCommand> indirectCommands;
-
-    // сразу инициализируем массив нулями. Места хватит под все детали всех LOD-ов
     std::vector<uint32_t> flatVisibleIndices;
 
     UINT currentVisibleIndexOffset = 0;
@@ -35,11 +40,11 @@ void StaticGpuScene::BuildGpuBuffers() {
     for (auto& pair : m_buildData) {
         const EntityGroupKey& key = pair.first;
         std::vector<InstanceData>& instances = pair.second;
-        UINT instanceCount = (UINT)instances.size();
+        UINT instanceCount = static_cast<UINT>(instances.size());
 
         if (instanceCount == 0) continue;
 
-        UINT entityID = (UINT)metaDataList.size();
+        UINT entityID = static_cast<UINT>(metaDataList.size());
         EntityMetaData meta = {};
         ZeroMemory(&meta, sizeof(EntityMetaData));
 
@@ -49,7 +54,6 @@ void StaticGpuScene::BuildGpuBuffers() {
             meta.Radius = sphere.Radius;
         }
 
-        // Лямбда для настройки одного уровня LOD
         auto processLOD = [&](StaticModel* model, int lodLevel) {
             if (!model) {
                 meta.Lod[lodLevel].FirstBatch = 0;
@@ -59,8 +63,8 @@ void StaticGpuScene::BuildGpuBuffers() {
                 return;
             }
 
-            meta.Lod[lodLevel].FirstBatch = (UINT)m_batches.size();
-            meta.Lod[lodLevel].PartCount = (UINT)model->GetPartCount();
+            meta.Lod[lodLevel].FirstBatch = static_cast<UINT>(m_batches.size());
+            meta.Lod[lodLevel].PartCount = static_cast<UINT>(model->GetPartCount());
             meta.Lod[lodLevel].FirstVisibleOffset = currentVisibleIndexOffset;
             meta.Lod[lodLevel].MaxInstances = instanceCount;
 
@@ -71,20 +75,23 @@ void StaticGpuScene::BuildGpuBuffers() {
                 cmd.IndexCountPerInstance = part.indexCount;
                 cmd.StartIndexLocation = part.startIndex;
                 cmd.BaseVertexLocation = part.baseVertex;
-                cmd.StartInstanceLocation = 0;
+                cmd.StartInstanceLocation = currentVisibleIndexOffset;
 
-                // FIX ME !!!! ВРЕМЕННЫЙ КОД (до написания Compute Shader):
-                // Заполняем счетчики только для LOD0, чтобы объекты отображались
                 if (lodLevel == 0) {
                     cmd.InstanceCount = instanceCount;
+                    uint32_t isAlphaBit = 0;
+                    uint32_t batchPacked = (part.sliceIndex & 0x3FF) | (isAlphaBit << 10);
+
                     for (UINT i = 0; i < instanceCount; ++i) {
-                        flatVisibleIndices.push_back((UINT)flatInstances.size() + i);
+                        uint32_t actualIndex = static_cast<UINT>(flatInstances.size()) + i;
+                        uint32_t finalPacked = (actualIndex & 0x1FFFFF) | (batchPacked << 21);
+                        flatVisibleIndices.push_back(finalPacked);
                     }
                 }
                 else {
-                    cmd.InstanceCount = 0;
+                    cmd.InstanceCount = 0; 
                     for (UINT i = 0; i < instanceCount; ++i) {
-                        flatVisibleIndices.push_back(0); // Резервируем нули
+                        flatVisibleIndices.push_back(0); 
                     }
                 }
 
@@ -92,80 +99,75 @@ void StaticGpuScene::BuildGpuBuffers() {
 
                 RenderBatch batch;
                 batch.Model = model;
-                batch.PartIndex = (int)p;
+                batch.PartIndex = static_cast<int>(p);
                 batch.StartInstanceOffset = currentVisibleIndexOffset;
                 m_batches.push_back(batch);
 
-                currentVisibleIndexOffset += instanceCount; // Резерв памяти!
+                currentVisibleIndexOffset += instanceCount;
             }
             };
 
-        // Обрабатываем каждый уровень
-        // Обрабатываем LOD 0 (База всегда есть)
         processLOD(key.Lod0, 0);
 
-        // Обрабатываем LOD 1
         if (key.HideLod1) {
-            // Оставляем нули, чтобы объект ИСЧЕЗ вдали
-            meta.Lod[1].FirstBatch = 0; meta.Lod[1].PartCount = 0;
+            meta.Lod[1].FirstBatch = 0;
+            meta.Lod[1].PartCount = 0;
+            meta.Lod[1].FirstVisibleOffset = 0;
+            meta.Lod[1].MaxInstances = 0;
         }
         else if (key.Lod1 != nullptr) {
-            processLOD(key.Lod1, 1); // Есть свой LOD
+            processLOD(key.Lod1, 1);
         }
         else {
-            meta.Lod[1] = meta.Lod[0]; // Фоллбэк: рисуем LOD0 вместо LOD1
+            meta.Lod[1] = meta.Lod[0];
         }
 
-        // Обрабатываем LOD 2
         if (key.HideLod2) {
-            meta.Lod[2].FirstBatch = 0; meta.Lod[2].PartCount = 0;
+            meta.Lod[2].FirstBatch = 0;
+            meta.Lod[2].PartCount = 0;
+            meta.Lod[2].FirstVisibleOffset = 0;
+            meta.Lod[2].MaxInstances = 0;
         }
         else if (key.Lod2 != nullptr) {
             processLOD(key.Lod2, 2);
         }
         else {
-            meta.Lod[2] = meta.Lod[1]; // Фоллбэк
+            meta.Lod[2] = meta.Lod[1];
         }
 
         metaDataList.push_back(meta);
 
-        // Обновляем EntityID у инстансов и кладем в общий котел
         for (auto& inst : instances) {
             inst.EntityID = entityID;
             flatInstances.push_back(inst);
         }
     }
 
-
-    // СОЗДАНИЕ GPU БУФЕРОВ
-
-    // Instance Buffer
     D3D11_BUFFER_DESC instDesc = {};
-    instDesc.ByteWidth = sizeof(InstanceData) * (UINT)flatInstances.size();
+    instDesc.ByteWidth = static_cast<UINT>(sizeof(InstanceData) * flatInstances.size());
     instDesc.Usage = D3D11_USAGE_IMMUTABLE;
     instDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     instDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
     instDesc.StructureByteStride = sizeof(InstanceData);
+
     D3D11_SUBRESOURCE_DATA instInit = { flatInstances.data(), 0, 0 };
     m_device->CreateBuffer(&instDesc, &instInit, m_instanceBuffer.ReleaseAndGetAddressOf());
 
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.Format = DXGI_FORMAT_UNKNOWN;
     srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-    srvDesc.Buffer.NumElements = (UINT)flatInstances.size();
+    srvDesc.Buffer.NumElements = static_cast<UINT>(flatInstances.size());
     m_device->CreateShaderResourceView(m_instanceBuffer.Get(), &srvDesc, m_instanceSRV.ReleaseAndGetAddressOf());
 
-    // MetaData Buffer
     D3D11_BUFFER_DESC metaDesc = instDesc;
-    metaDesc.ByteWidth = sizeof(EntityMetaData) * (UINT)metaDataList.size();
+    metaDesc.ByteWidth = static_cast<UINT>(sizeof(EntityMetaData) * metaDataList.size());
     metaDesc.StructureByteStride = sizeof(EntityMetaData);
     D3D11_SUBRESOURCE_DATA metaInit = { metaDataList.data(), 0, 0 };
     m_device->CreateBuffer(&metaDesc, &metaInit, m_metaDataBuffer.ReleaseAndGetAddressOf());
 
-    srvDesc.Buffer.NumElements = (UINT)metaDataList.size();
+    srvDesc.Buffer.NumElements = static_cast<UINT>(metaDataList.size());
     m_device->CreateShaderResourceView(m_metaDataBuffer.Get(), &srvDesc, m_metaDataSRV.ReleaseAndGetAddressOf());
 
-    // Visible Indices Buffer (SRV + UAV)
     D3D11_BUFFER_DESC idxDesc = {};
     idxDesc.ByteWidth = sizeof(uint32_t) * currentVisibleIndexOffset;
     idxDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -184,9 +186,8 @@ void StaticGpuScene::BuildGpuBuffers() {
     uavDesc.Buffer.NumElements = currentVisibleIndexOffset;
     m_device->CreateUnorderedAccessView(m_visibleIndexBuffer.Get(), &uavDesc, m_visibleIndexUAV.ReleaseAndGetAddressOf());
 
-    // Indirect Args Buffer (UAV: RAW View для InterlockedAdd)
     D3D11_BUFFER_DESC argsDesc = {};
-    argsDesc.ByteWidth = sizeof(IndirectCommand) * (UINT)indirectCommands.size();
+    argsDesc.ByteWidth = static_cast<UINT>(sizeof(IndirectCommand) * indirectCommands.size());
     argsDesc.Usage = D3D11_USAGE_DEFAULT;
     argsDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
     argsDesc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
@@ -194,12 +195,10 @@ void StaticGpuScene::BuildGpuBuffers() {
     D3D11_SUBRESOURCE_DATA argsInit = { indirectCommands.data(), 0, 0 };
     m_device->CreateBuffer(&argsDesc, &argsInit, m_indirectArgsBuffer.ReleaseAndGetAddressOf());
 
-    // Создаем буфер-сбросчик (все InstanceCount = 0)
     for (auto& cmd : indirectCommands) cmd.InstanceCount = 0;
     argsInit.pSysMem = indirectCommands.data();
     m_device->CreateBuffer(&argsDesc, &argsInit, m_indirectArgsResetBuffer.ReleaseAndGetAddressOf());
 
-    // Создаем UAV для рабочего буфера
     D3D11_UNORDERED_ACCESS_VIEW_DESC uavArgsDesc = {};
     uavArgsDesc.Format = DXGI_FORMAT_R32_TYPELESS;
     uavArgsDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
@@ -207,69 +206,159 @@ void StaticGpuScene::BuildGpuBuffers() {
     uavArgsDesc.Buffer.NumElements = argsDesc.ByteWidth / 4;
     m_device->CreateUnorderedAccessView(m_indirectArgsBuffer.Get(), &uavArgsDesc, m_indirectArgsUAV.ReleaseAndGetAddressOf());
 
-    // Batch Constant Buffer
-    D3D11_BUFFER_DESC cbDesc = {};
-    cbDesc.ByteWidth = sizeof(CB_Batch);
-    cbDesc.Usage = D3D11_USAGE_DYNAMIC;
-    cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-    cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    m_device->CreateBuffer(&cbDesc, nullptr, m_batchCB.ReleaseAndGetAddressOf());
+
+    std::vector<BatchGpuInfo> batchInfoData;
+    batchInfoData.reserve(m_batches.size());
+    for (const auto& batch : m_batches) {
+        const auto& part = batch.Model->GetPart(batch.PartIndex);
+        BatchGpuInfo info;
+        uint32_t isAlphaBit = 0; // FIXME сделать нормально альфу для статиков
+        info.PackedData = (part.sliceIndex & 0x3FF) | (isAlphaBit << 10);
+        batchInfoData.push_back(info);
+    }
+
+    D3D11_BUFFER_DESC biDesc = {};
+    biDesc.ByteWidth = static_cast<UINT>(sizeof(BatchGpuInfo) * batchInfoData.size());
+    biDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    biDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    biDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+    biDesc.StructureByteStride = sizeof(BatchGpuInfo);
+
+    D3D11_SUBRESOURCE_DATA biInit = { batchInfoData.data(), 0, 0 };
+    m_device->CreateBuffer(&biDesc, &biInit, m_batchInfoBuffer.ReleaseAndGetAddressOf());
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC biSrvDesc = {};
+    biSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+    biSrvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+    biSrvDesc.Buffer.NumElements = static_cast<UINT>(batchInfoData.size());
+    m_device->CreateShaderResourceView(m_batchInfoBuffer.Get(), &biSrvDesc, m_batchInfoSRV.ReleaseAndGetAddressOf());
+
+
+    for (int i = 0; i < 3; ++i) {
+        D3D11_BUFFER_DESC shVisDesc = {};
+        shVisDesc.Usage = D3D11_USAGE_DEFAULT;
+        shVisDesc.ByteWidth = sizeof(uint32_t) * currentVisibleIndexOffset;
+        shVisDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        shVisDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        shVisDesc.StructureByteStride = sizeof(uint32_t);
+        m_device->CreateBuffer(&shVisDesc, nullptr, m_shadowVisibleIndexBuffer[i].ReleaseAndGetAddressOf());
+
+        D3D11_UNORDERED_ACCESS_VIEW_DESC shUavDesc = {};
+        shUavDesc.Format = DXGI_FORMAT_UNKNOWN;
+        shUavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        shUavDesc.Buffer.NumElements = currentVisibleIndexOffset;
+        m_device->CreateUnorderedAccessView(m_shadowVisibleIndexBuffer[i].Get(), &shUavDesc, m_shadowVisibleIndexUAV[i].ReleaseAndGetAddressOf());
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC shSrvDesc = {};
+        shSrvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        shSrvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
+        shSrvDesc.Buffer.NumElements = currentVisibleIndexOffset;
+        m_device->CreateShaderResourceView(m_shadowVisibleIndexBuffer[i].Get(), &shSrvDesc, m_shadowVisibleIndexSRV[i].ReleaseAndGetAddressOf());
+
+        D3D11_BUFFER_DESC shArgsDesc = {};
+        shArgsDesc.Usage = D3D11_USAGE_DEFAULT;
+        shArgsDesc.ByteWidth = static_cast<UINT>(sizeof(IndirectCommand) * indirectCommands.size());
+        shArgsDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+        shArgsDesc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+
+        D3D11_SUBRESOURCE_DATA shArgsInitData = { indirectCommands.data(), 0, 0 };
+        m_device->CreateBuffer(&shArgsDesc, &shArgsInitData, m_shadowIndirectArgsBuffer[i].ReleaseAndGetAddressOf());
+
+        D3D11_UNORDERED_ACCESS_VIEW_DESC shArgsUavDesc = {};
+        shArgsUavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+        shArgsUavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        shArgsUavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+        shArgsUavDesc.Buffer.NumElements = shArgsDesc.ByteWidth / 4;
+        m_device->CreateUnorderedAccessView(m_shadowIndirectArgsBuffer[i].Get(), &shArgsUavDesc, m_shadowIndirectArgsUAV[i].ReleaseAndGetAddressOf());
+    }
 
     m_renderOrder.resize(m_batches.size());
     for (size_t i = 0; i < m_batches.size(); ++i) {
-        m_renderOrder[i] = (int)i;
+        m_renderOrder[i] = static_cast<int>(i);
     }
 
-    // Сортируем индексы батчей по адресу указателя на текстуру!
-    // Это сгруппирует объекты с одинаковой текстурой вместе.
     std::sort(m_renderOrder.begin(), m_renderOrder.end(), [&](int a, int b) {
-        auto texA = m_batches[a].Model->GetPart(m_batches[a].PartIndex).texture.get();
-        auto texB = m_batches[b].Model->GetPart(m_batches[b].PartIndex).texture.get();
-        return texA < texB; // Сортировка по адресу в памяти
+        const auto& partA = m_batches[a].Model->GetPart(m_batches[a].PartIndex);
+        const auto& partB = m_batches[b].Model->GetPart(m_batches[b].PartIndex);
+        if (partA.bucketIndex != partB.bucketIndex) return partA.bucketIndex < partB.bucketIndex;
+        return partA.sliceIndex < partB.sliceIndex;
         });
 
-    m_totalInstanceCount = (UINT)flatInstances.size();
+    m_totalInstanceCount = static_cast<UINT>(flatInstances.size());
     m_buildData.clear();
 }
 
-void StaticGpuScene::Render() {
-    if (m_batches.empty() || !m_instanceSRV || !m_visibleIndexSRV || !m_indirectArgsBuffer || !m_batchCB) return;
+void StaticGpuScene::Render(ID3D11Buffer* instanceIdBuffer) {
+    if (m_batches.empty() || !m_instanceSRV || !m_visibleIndexSRV || !m_indirectArgsBuffer) return;
 
     ID3D11ShaderResourceView* srvs[2] = { m_instanceSRV.Get(), m_visibleIndexSRV.Get() };
     m_context->VSSetShaderResources(1, 2, srvs);
 
-    // запоминаем последнюю установленную текстуру, чтобы не биндить ее повторно!
-    ID3D11ShaderResourceView* currentTexSRV = nullptr;
+    ID3D11Buffer* vbs[2] = { ModelManager::Get().GetGlobalStaticVB(), instanceIdBuffer };
+    UINT strides[2] = { sizeof(SimpleVertex), sizeof(uint32_t) };
+    UINT offsets[2] = { 0, 0 };
+    m_context->IASetVertexBuffers(0, 2, vbs, strides, offsets);
+    m_context->IASetIndexBuffer(ModelManager::Get().GetGlobalStaticIB(), DXGI_FORMAT_R32_UINT, 0);
+    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    // Идем по отсортированному списку
+    int currentBucket = -1;
+
     for (int batchIdx : m_renderOrder) {
         const auto& batch = m_batches[batchIdx];
-
-        // Смещение привязано к реальному индексу батча, а не к порядку цикла
-        UINT argsOffset = batchIdx * sizeof(IndirectCommand);
-
-        D3D11_MAPPED_SUBRESOURCE mapped;
-        if (SUCCEEDED(m_context->Map(m_batchCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-            CB_Batch* data = (CB_Batch*)mapped.pData;
-            data->BatchOffset = batch.StartInstanceOffset;
-            m_context->Unmap(m_batchCB.Get(), 0);
-        }
-        m_context->VSSetConstantBuffers(1, 1, m_batchCB.GetAddressOf());
-
-        batch.Model->BindGeometry();
-
         const auto& part = batch.Model->GetPart(batch.PartIndex);
-        if (part.texture) {
-            ID3D11ShaderResourceView* texSRV = part.texture->Get();
 
-            // Устанавливаем текстуру ТОЛЬКО если она изменилась!
-            if (texSRV != currentTexSRV) {
-                m_context->PSSetShaderResources(0, 1, &texSRV);
-                currentTexSRV = texSRV;
+        if (part.bucketIndex != currentBucket) {
+            currentBucket = part.bucketIndex;
+            TextureBucket* bucket = ModelManager::Get().GetBucket(currentBucket);
+            if (bucket && !bucket->albedoNames.empty()) {
+                ID3D11ShaderResourceView* texArrays[3] = {
+                    bucket->AlbedoArray->GetSRV(),
+                    bucket->MRAOArray->GetSRV(),
+                    bucket->NormalArray->GetSRV()
+                };
+                m_context->PSSetShaderResources(0, 3, texArrays);
             }
         }
 
+        UINT argsOffset = static_cast<UINT>(batchIdx * sizeof(IndirectCommand));
         m_context->DrawIndexedInstancedIndirect(m_indirectArgsBuffer.Get(), argsOffset);
+    }
+
+    ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
+    m_context->VSSetShaderResources(1, 2, nullSRVs);
+}
+
+void StaticGpuScene::RenderShadows(int cascadeIndex, ID3D11Buffer* instanceIdBuffer) {
+    if (m_batches.empty() || cascadeIndex < 0 || cascadeIndex >= 3) return;
+    if (!m_shadowVisibleIndexSRV[cascadeIndex] || !m_shadowIndirectArgsBuffer[cascadeIndex]) return;
+
+    ID3D11ShaderResourceView* srvs[2] = { m_instanceSRV.Get(), m_shadowVisibleIndexSRV[cascadeIndex].Get() };
+    m_context->VSSetShaderResources(1, 2, srvs);
+
+    ID3D11Buffer* vbs[2] = { ModelManager::Get().GetGlobalStaticVB(), instanceIdBuffer };
+    UINT strides[2] = { sizeof(SimpleVertex), sizeof(uint32_t) };
+    UINT offsets[2] = { 0, 0 };
+    m_context->IASetVertexBuffers(0, 2, vbs, strides, offsets);
+    m_context->IASetIndexBuffer(ModelManager::Get().GetGlobalStaticIB(), DXGI_FORMAT_R32_UINT, 0);
+    m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    int currentBucket = -1;
+
+    for (int batchIdx : m_renderOrder) {
+        const auto& batch = m_batches[batchIdx];
+        const auto& part = batch.Model->GetPart(batch.PartIndex);
+
+        if (part.bucketIndex != currentBucket) {
+            currentBucket = part.bucketIndex;
+            TextureBucket* bucket = ModelManager::Get().GetBucket(currentBucket);
+            if (bucket && !bucket->albedoNames.empty()) {
+                ID3D11ShaderResourceView* texArrays[1] = { bucket->AlbedoArray->GetSRV() };
+                m_context->PSSetShaderResources(0, 1, texArrays);
+            }
+        }
+
+        UINT argsOffset = static_cast<UINT>(batchIdx * sizeof(IndirectCommand));
+        m_context->DrawIndexedInstancedIndirect(m_shadowIndirectArgsBuffer[cascadeIndex].Get(), argsOffset);
     }
 
     ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };

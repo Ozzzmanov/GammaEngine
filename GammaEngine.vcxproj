@@ -5,6 +5,14 @@
       <Configuration>Debug</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="Editor|Win32">
+      <Configuration>Editor</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Editor|x64">
+      <Configuration>Editor</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
     <ProjectConfiguration Include="Release|Win32">
       <Configuration>Release</Configuration>
       <Platform>Win32</Platform>
@@ -21,48 +29,71 @@
   <ItemGroup>
     <ClCompile Include="src\Config\EngineConfig.cpp" />
     <ClCompile Include="src\Core\DataSection.cpp" />
+    <ClCompile Include="src\Core\GammaModule.cpp" />
     <ClCompile Include="src\Core\InputSystem.cpp" />
     <ClCompile Include="src\Core\Logger.cpp" />
     <ClCompile Include="src\Core\ResourceManager.cpp" />
     <ClCompile Include="src\Core\TaskScheduler.cpp" />
     <ClCompile Include="src\Core\Timer.cpp" />
     <ClCompile Include="src\Core\Window.cpp" />
+    <ClCompile Include="src\Editor\EditorCamera.cpp" />
+    <ClCompile Include="src\Editor\EditorProfiler.cpp" />
+    <ClCompile Include="src\Editor\GammaEditor.cpp" />
+    <ClCompile Include="src\Editor\Panels\SettingsPanel.cpp" />
+    <ClCompile Include="src\Editor\Panels\ViewportPanel.cpp" />
     <ClCompile Include="src\GammaEngine.cpp" />
     <ClCompile Include="src\Graphics\Camera.cpp" />
+    <ClCompile Include="src\Graphics\ClipmapRvtManager.cpp" />
     <ClCompile Include="src\Graphics\ComputeShader.cpp" />
     <ClCompile Include="src\Graphics\DDSTextureLoader.cpp" />
     <ClCompile Include="src\Graphics\DX11Renderer.cpp" />
+    <ClCompile Include="src\Graphics\FloraGpuScene.cpp" />
     <ClCompile Include="src\Graphics\GpuCullingSystem.cpp" />
     <ClCompile Include="src\Graphics\HzbManager.cpp" />
     <ClCompile Include="src\Graphics\LevelTextureManager.cpp" />
+    <ClCompile Include="src\Graphics\LightManager.cpp" />
     <ClCompile Include="src\Graphics\ModelManager.cpp" />
+    <ClCompile Include="src\Graphics\PostProcessManager.cpp" />
     <ClCompile Include="src\Graphics\RenderPipeline.cpp" />
     <ClCompile Include="src\Graphics\RenderTarget.cpp" />
     <ClCompile Include="src\Graphics\Shader.cpp" />
     <ClCompile Include="src\Graphics\ShaderManager.cpp" />
+    <ClCompile Include="src\Graphics\ShadowManager.cpp" />
     <ClCompile Include="src\Graphics\StaticGpuScene.cpp" />
     <ClCompile Include="src\Graphics\StaticModel.cpp" />
     <ClCompile Include="src\Graphics\TerrainGpuScene.cpp" />
     <ClCompile Include="src\Graphics\TextureArray.cpp" />
+    <ClCompile Include="src\Graphics\TreeModel.cpp" />
     <ClCompile Include="src\GUI\DebugOverlay.cpp" />
     <ClCompile Include="src\Main.cpp" />
     <ClCompile Include="src\Resources\BwBinSection.cpp" />
     <ClCompile Include="src\Resources\BwPackedSection.cpp" />
     <ClCompile Include="src\Resources\DebugTools.cpp" />
+    <ClCompile Include="src\Resources\GeometryBaker.cpp" />
     <ClCompile Include="src\Resources\HeightMap.cpp" />
+    <ClCompile Include="src\Resources\RvtBaker.cpp" />
     <ClCompile Include="src\Resources\SpaceSettings.cpp" />
     <ClCompile Include="src\Resources\StbImageImpl.cpp" />
     <ClCompile Include="src\Resources\TerrainArrayManager.cpp" />
-    <ClCompile Include="src\Resources\TerrainAtlasManager.cpp" />
     <ClCompile Include="src\Resources\TerrainBaker.cpp" />
+    <ClCompile Include="src\Resources\TextureBaker.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui_demo.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui_draw.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui_impl_dx11.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui_impl_win32.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui_tables.cpp" />
+    <ClCompile Include="src\Vendor\ImGui\imgui_widgets.cpp" />
     <ClCompile Include="src\World\Chunk.cpp" />
     <ClCompile Include="src\World\Terrain.cpp" />
     <ClCompile Include="src\World\WaterVLO.cpp" />
     <ClCompile Include="src\World\WorldLoader.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\API\GammaAPI.h" />
     <ClInclude Include="src\Config\EngineConfig.h" />
     <ClInclude Include="src\Core\DataSection.h" />
+    <ClInclude Include="src\Core\GammaModule.h" />
     <ClInclude Include="src\Core\InputSystem.h" />
     <ClInclude Include="src\Core\Logger.h" />
     <ClInclude Include="src\Core\Prerequisites.h" />
@@ -70,39 +101,61 @@
     <ClInclude Include="src\Core\TaskScheduler.h" />
     <ClInclude Include="src\Core\Timer.h" />
     <ClInclude Include="src\Core\Window.h" />
+    <ClInclude Include="src\Editor\EditorCamera.h" />
+    <ClInclude Include="src\Editor\EditorPanel.h" />
+    <ClInclude Include="src\Editor\EditorProfiler.h" />
+    <ClInclude Include="src\Editor\GammaEditor.h" />
+    <ClInclude Include="src\Editor\Panels\SettingsPanel.h" />
+    <ClInclude Include="src\Editor\Panels\ViewportPanel.h" />
     <ClInclude Include="src\GammaEngine.h" />
     <ClInclude Include="src\Graphics\Camera.h" />
+    <ClInclude Include="src\Graphics\ClipmapRvtManager.h" />
     <ClInclude Include="src\Graphics\ComputeShader.h" />
     <ClInclude Include="src\Graphics\ConstantBuffer.h" />
     <ClInclude Include="src\Graphics\DDSTextureLoader.h" />
     <ClInclude Include="src\Graphics\DX11Renderer.h" />
+    <ClInclude Include="src\Graphics\FloraGpuScene.h" />
     <ClInclude Include="src\Graphics\GpuCullingSystem.h" />
     <ClInclude Include="src\Graphics\GpuTypes.h" />
     <ClInclude Include="src\Graphics\HzbManager.h" />
     <ClInclude Include="src\Graphics\LevelTextureManager.h" />
+    <ClInclude Include="src\Graphics\LightManager.h" />
     <ClInclude Include="src\Graphics\ModelManager.h" />
+    <ClInclude Include="src\Graphics\PostProcessManager.h" />
     <ClInclude Include="src\Graphics\RenderPipeline.h" />
     <ClInclude Include="src\Graphics\RenderTarget.h" />
     <ClInclude Include="src\Graphics\Shader.h" />
     <ClInclude Include="src\Graphics\ShaderManager.h" />
+    <ClInclude Include="src\Graphics\ShadowManager.h" />
     <ClInclude Include="src\Graphics\StaticGpuScene.h" />
     <ClInclude Include="src\Graphics\StaticModel.h" />
     <ClInclude Include="src\Graphics\TerrainGpuScene.h" />
     <ClInclude Include="src\Graphics\Texture.h" />
     <ClInclude Include="src\Graphics\TextureArray.h" />
+    <ClInclude Include="src\Graphics\TreeModel.h" />
     <ClInclude Include="src\GUI\DebugOverlay.h" />
     <ClInclude Include="src\Resources\BwBinSection.h" />
     <ClInclude Include="src\Resources\BwPackedSection.h" />
     <ClInclude Include="src\Resources\DebugTools.h" />
+    <ClInclude Include="src\Resources\GeometryBaker.h" />
     <ClInclude Include="src\Resources\HeightMap.h" />
     <ClInclude Include="src\Resources\json.hpp" />
+    <ClInclude Include="src\Resources\RvtBaker.h" />
     <ClInclude Include="src\Resources\SpaceSettings.h" />
     <ClInclude Include="src\Resources\stb_image.h" />
     <ClInclude Include="src\Resources\stb_image_write.h" />
     <ClInclude Include="src\Resources\TerrainArrayManager.h" />
-    <ClInclude Include="src\Resources\TerrainAtlasManager.h" />
     <ClInclude Include="src\Resources\TerrainBaker.h" />
+    <ClInclude Include="src\Resources\TextureBaker.h" />
     <ClInclude Include="src\Resources\tiny_gltf.h" />
+    <ClInclude Include="src\Vendor\ImGui\imconfig.h" />
+    <ClInclude Include="src\Vendor\ImGui\imgui.h" />
+    <ClInclude Include="src\Vendor\ImGui\imgui_impl_dx11.h" />
+    <ClInclude Include="src\Vendor\ImGui\imgui_impl_win32.h" />
+    <ClInclude Include="src\Vendor\ImGui\imgui_internal.h" />
+    <ClInclude Include="src\Vendor\ImGui\imstb_rectpack.h" />
+    <ClInclude Include="src\Vendor\ImGui\imstb_textedit.h" />
+    <ClInclude Include="src\Vendor\ImGui\imstb_truetype.h" />
     <ClInclude Include="src\World\Chunk.h" />
     <ClInclude Include="src\World\Terrain.h" />
     <ClInclude Include="src\World\WaterVLO.h" />
@@ -132,6 +185,13 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Editor|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
@@ -139,6 +199,13 @@
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Editor|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
@@ -156,10 +223,16 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Editor|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Editor|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
@@ -191,11 +264,26 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Editor|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>GAMMA_USE_HOT_RELOAD</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)src</AdditionalIncludeDirectories>
@@ -212,7 +300,24 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir)src</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>d3d11.lib;d3dcompiler.lib;dxguid.lib;user32.lib;gdi32.lib;</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Editor|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>GAMMA_USE_HOT_RELOAD;GAMMA_EDITOR</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>$(ProjectDir)src</AdditionalIncludeDirectories>

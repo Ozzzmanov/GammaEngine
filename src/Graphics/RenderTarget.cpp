@@ -4,10 +4,10 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//
 // ================================================================================
 // RenderTarget.cpp
 // ================================================================================
-
 #include "RenderTarget.h"
 #include "../Core/Logger.h"
 
@@ -15,7 +15,17 @@ RenderTarget::RenderTarget(ID3D11Device* device, ID3D11DeviceContext* context)
     : m_device(device), m_context(context) {
 }
 
+void RenderTarget::Release() {
+    m_colorTexture.Reset();
+    m_rtv.Reset();
+    m_srv.Reset();
+    m_depthTexture.Reset();
+    m_dsv.Reset();
+}
+
 bool RenderTarget::Initialize(int width, int height, DXGI_FORMAT format, bool withDepth) {
+    Release(); // Защита от утечек при ресайзе
+
     m_width = width;
     m_height = height;
 
@@ -31,24 +41,15 @@ bool RenderTarget::Initialize(int width, int height, DXGI_FORMAT format, bool wi
     texDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
 
     HRESULT hr = m_device->CreateTexture2D(&texDesc, nullptr, m_colorTexture.GetAddressOf());
-    if (FAILED(hr)) {
-        Logger::Error(LogCategory::Render, "RenderTarget: Failed to create Color Texture.");
-        return false;
-    }
+    HR_CHECK(hr, "RenderTarget: Failed to create Color Texture.");
 
-    // Создаем RTV (Render Target View) чтобы в нее писать
+    // Создаем RTV
     hr = m_device->CreateRenderTargetView(m_colorTexture.Get(), nullptr, m_rtv.GetAddressOf());
-    if (FAILED(hr)) {
-        Logger::Error(LogCategory::Render, "RenderTarget: Failed to create RTV.");
-        return false;
-    }
+    HR_CHECK(hr, "RenderTarget: Failed to create RTV.");
 
-    // Создаем SRV (Shader Resource View) чтобы ее читать в других шейдерах
+    // Создаем SRV
     hr = m_device->CreateShaderResourceView(m_colorTexture.Get(), nullptr, m_srv.GetAddressOf());
-    if (FAILED(hr)) {
-        Logger::Error(LogCategory::Render, "RenderTarget: Failed to create SRV.");
-        return false;
-    }
+    HR_CHECK(hr, "RenderTarget: Failed to create SRV.");
 
     // Опционально создаем собственный Depth Buffer
     if (withDepth) {
@@ -63,16 +64,10 @@ bool RenderTarget::Initialize(int width, int height, DXGI_FORMAT format, bool wi
         depthDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 
         hr = m_device->CreateTexture2D(&depthDesc, nullptr, m_depthTexture.GetAddressOf());
-        if (FAILED(hr)) {
-            Logger::Error(LogCategory::Render, "RenderTarget: Failed to create Depth Texture.");
-            return false;
-        }
+        HR_CHECK(hr, "RenderTarget: Failed to create Depth Texture.");
 
         hr = m_device->CreateDepthStencilView(m_depthTexture.Get(), nullptr, m_dsv.GetAddressOf());
-        if (FAILED(hr)) {
-            Logger::Error(LogCategory::Render, "RenderTarget: Failed to create DSV.");
-            return false;
-        }
+        HR_CHECK(hr, "RenderTarget: Failed to create DSV.");
     }
 
     return true;
@@ -96,10 +91,9 @@ void RenderTarget::Bind() {
     ID3D11DepthStencilView* dsv = m_dsv ? m_dsv.Get() : nullptr;
     m_context->OMSetRenderTargets(1, &rtv, dsv);
 
-    // Устанавливаем вьюпорт по размеру таргета
     D3D11_VIEWPORT vp;
-    vp.Width = (float)m_width;
-    vp.Height = (float)m_height;
+    vp.Width = static_cast<float>(m_width);
+    vp.Height = static_cast<float>(m_height);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0;
@@ -112,8 +106,8 @@ void RenderTarget::BindWithCustomDepth(ID3D11DepthStencilView* customDepthDSV) {
     m_context->OMSetRenderTargets(1, &rtv, customDepthDSV);
 
     D3D11_VIEWPORT vp;
-    vp.Width = (float)m_width;
-    vp.Height = (float)m_height;
+    vp.Width = static_cast<float>(m_width);
+    vp.Height = static_cast<float>(m_height);
     vp.MinDepth = 0.0f;
     vp.MaxDepth = 1.0f;
     vp.TopLeftX = 0;

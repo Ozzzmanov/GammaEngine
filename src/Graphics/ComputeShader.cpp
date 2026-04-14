@@ -27,7 +27,8 @@ bool ComputeShader::Load(const std::wstring& filename, const std::string& entryP
     flags |= D3DCOMPILE_DEBUG;
 #endif
 
-    // Профиль cs_5_0 для DX11
+    // FIXME: Компиляция в рантайме! Как и с обычными шейдерами, 
+    // Compute Shaders должны компилироваться оффлайн в .cso и управляться через ShaderManager.
     HRESULT hr = D3DCompileFromFile(
         filename.c_str(), nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE,
         entryPoint.c_str(), "cs_5_0",
@@ -36,19 +37,19 @@ bool ComputeShader::Load(const std::wstring& filename, const std::string& entryP
 
     if (FAILED(hr)) {
         if (errorBlob) {
-            Logger::Error(LogCategory::Render, "Compute Shader Compile Error: " + std::string((char*)errorBlob->GetBufferPointer()));
+            std::string err(reinterpret_cast<char*>(errorBlob->GetBufferPointer()));
+            GAMMA_LOG_ERROR(LogCategory::Render, "Compute Shader Compile Error: " + err);
         }
         else {
-            // Конвертация wide string to string (простая) для лога
             std::string fileStr(filename.begin(), filename.end());
-            Logger::Error(LogCategory::Render, "Compute Shader File Not Found: " + fileStr);
+            GAMMA_LOG_ERROR(LogCategory::Render, "Compute Shader File Not Found: " + fileStr);
         }
         return false;
     }
 
     hr = m_device->CreateComputeShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, m_shader.GetAddressOf());
     if (FAILED(hr)) {
-        Logger::Error(LogCategory::Render, "Failed to create Compute Shader object.");
+        GAMMA_LOG_ERROR(LogCategory::Render, "Failed to create Compute Shader object.");
         return false;
     }
 

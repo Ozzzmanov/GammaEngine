@@ -22,6 +22,21 @@
     <Filter Include="src\Config">
       <UniqueIdentifier>{682632b0-c01e-40f5-845e-c9c7c997adeb}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\API">
+      <UniqueIdentifier>{2e960e8c-f20c-413c-ba57-f459c93330ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\Vendor">
+      <UniqueIdentifier>{994a31ad-712a-4694-a230-e773b5c19b96}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\Vendor\ImGui">
+      <UniqueIdentifier>{7240dad2-c158-4a10-acd1-0ff2427d851d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\Editor">
+      <UniqueIdentifier>{a15dae96-c5e9-4708-83f8-4f8f0d1240fd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\Editor\Panels">
+      <UniqueIdentifier>{5663a42b-dcaa-4130-987a-2689445dce29}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Main.cpp">
@@ -129,9 +144,6 @@
     <ClCompile Include="src\Resources\TerrainBaker.cpp">
       <Filter>src\Resources</Filter>
     </ClCompile>
-    <ClCompile Include="src\Resources\TerrainAtlasManager.cpp">
-      <Filter>src\Resources</Filter>
-    </ClCompile>
     <ClCompile Include="src\Graphics\TerrainGpuScene.cpp">
       <Filter>src\Graphics</Filter>
     </ClCompile>
@@ -142,6 +154,72 @@
       <Filter>src\Graphics</Filter>
     </ClCompile>
     <ClCompile Include="src\Graphics\RenderTarget.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\TreeModel.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\FloraGpuScene.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\ShadowManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\TextureBaker.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\GeometryBaker.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\PostProcessManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Resources\RvtBaker.cpp">
+      <Filter>src\Resources</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\ClipmapRvtManager.cpp">
+      <Filter>src\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\GammaModule.cpp">
+      <Filter>src\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui_demo.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui_draw.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui_impl_dx11.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui_impl_win32.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui_tables.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Vendor\ImGui\imgui_widgets.cpp">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Editor\GammaEditor.cpp">
+      <Filter>src\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Editor\EditorProfiler.cpp">
+      <Filter>src\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Editor\Panels\ViewportPanel.cpp">
+      <Filter>src\Editor\Panels</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Editor\EditorCamera.cpp">
+      <Filter>src\Editor</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Editor\Panels\SettingsPanel.cpp">
+      <Filter>src\Editor\Panels</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Graphics\LightManager.cpp">
       <Filter>src\Graphics</Filter>
     </ClCompile>
   </ItemGroup>
@@ -269,9 +347,6 @@
     <ClInclude Include="src\Resources\TerrainBaker.h">
       <Filter>src\Resources</Filter>
     </ClInclude>
-    <ClInclude Include="src\Resources\TerrainAtlasManager.h">
-      <Filter>src\Resources</Filter>
-    </ClInclude>
     <ClInclude Include="src\Graphics\TerrainGpuScene.h">
       <Filter>src\Graphics</Filter>
     </ClInclude>
@@ -282,6 +357,81 @@
       <Filter>src\Graphics</Filter>
     </ClInclude>
     <ClInclude Include="src\Graphics\RenderTarget.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\TreeModel.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\FloraGpuScene.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\ShadowManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\TextureBaker.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\GeometryBaker.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\PostProcessManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Resources\RvtBaker.h">
+      <Filter>src\Resources</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\ClipmapRvtManager.h">
+      <Filter>src\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="src\API\GammaAPI.h">
+      <Filter>src\API</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\GammaModule.h">
+      <Filter>src\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imconfig.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imgui.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imgui_impl_dx11.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imgui_impl_win32.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imgui_internal.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imstb_rectpack.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imstb_textedit.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Vendor\ImGui\imstb_truetype.h">
+      <Filter>src\Vendor\ImGui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Editor\GammaEditor.h">
+      <Filter>src\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Editor\EditorProfiler.h">
+      <Filter>src\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Editor\EditorPanel.h">
+      <Filter>src\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Editor\Panels\ViewportPanel.h">
+      <Filter>src\Editor\Panels</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Editor\EditorCamera.h">
+      <Filter>src\Editor</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Editor\Panels\SettingsPanel.h">
+      <Filter>src\Editor\Panels</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Graphics\LightManager.h">
       <Filter>src\Graphics</Filter>
     </ClInclude>
   </ItemGroup>

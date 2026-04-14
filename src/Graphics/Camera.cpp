@@ -7,22 +7,20 @@
 //
 // ================================================================================
 // Camera.cpp
-// Реализация камеры.
 // ================================================================================
-
 #include "Camera.h"
 #include "../Core/InputSystem.h"
 #include "../Config/EngineConfig.h"
 #include <algorithm>
-#undef max
-#undef min
 
 using namespace DirectX;
 
 Camera::Camera()
     : m_position({ 0.0f, 50.0f, 0.0f }),
+    m_velocity({ 0.0f, 0.0f, 0.0f }),
     m_pitch(0.0f), m_yaw(0.0f),
-    m_isDebugMode(false)
+    m_isDebugMode(false),
+    m_isDirty(true)
 {
     XMStoreFloat4x4(&m_viewMatrix, XMMatrixIdentity());
     XMStoreFloat4x4(&m_projectionMatrix, XMMatrixIdentity());
@@ -35,59 +33,79 @@ void Camera::Initialize(float fov, float aspectRatio, float nearZ, float farZ) {
     XMMATRIX P = XMMatrixPerspectiveFovLH(fov, aspectRatio, nearZ, farZ);
     XMStoreFloat4x4(&m_projectionMatrix, P);
 
-    // Создаем начальный фрустум
     BoundingFrustum::CreateFromMatrix(m_frustum, P);
+    m_isDirty = true;
 }
 
 void Camera::Update(float deltaTime, const InputSystem& input) {
-    // Вращение
     XMFLOAT2 mouseDelta = input.GetMouseDelta();
-    float sensitivity = EngineConfig::Get().MouseSensitivity;
 
-    float rotX = mouseDelta.x * (sensitivity / 0.003f);
-    float rotY = mouseDelta.y * (sensitivity / 0.003f);
+    // Вращение
+    // FIXME: Утечка Windows API (VK_RBUTTON) в логику камеры.
+    // Использовать лучше input.IsActionActive("CameraLook").
+    if (input.IsKeyDown(0x02)) {
+        m_yaw += mouseDelta.x * MouseSensitivity;
+        m_pitch += mouseDelta.y * MouseSensitivity;
 
-    if (EngineConfig::Get().InvertY) rotY = -rotY;
-
-    if (input.IsKeyDown(VK_RBUTTON)) {
-        m_yaw += rotX;
-        m_pitch += rotY;
-        float limit = XM_PIDIV2 - 0.01f;
-        m_pitch = std::max(-limit, std::min(m_pitch, limit));
+        m_pitch = std::clamp(m_pitch, -XM_PIDIV2 + 0.01f, XM_PIDIV2 - 0.01f);
+        m_isDirty = true;
     }
 
-    // Перемещение
-    float speed = 100.0f * deltaTime;
+    // Вычисление векторов направления
+    XMMATRIX rotMatrix = XMMatrixRotationRollPitchYaw(m_pitch, m_yaw, 0.0f);
 
-    // Спринт
-    if (input.IsActionActive("Sprint")) speed *= 5.0f;
+    // Вектор взгляда (для свободного полета)
+    XMVECTOR flyForward = XMVector3TransformCoord(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), rotMatrix);
+    // Горизонтальный стрейф (без крена)
+    XMVECTOR right = XMVectorSet(cosf(m_yaw), 0.0f, -sinf(m_yaw), 0.0f);
+    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
-    XMVECTOR pos = XMLoadFloat3(&m_position);
+    // Вычисление желаемого ускорения (Input)
+    XMVECTOR accel = XMVectorZero();
 
-    XMVECTOR forward = XMVectorSet(sinf(m_yaw), 0, cosf(m_yaw), 0);
-    XMVECTOR right = XMVectorSet(cosf(m_yaw), 0, -sinf(m_yaw), 0);
-    XMVECTOR up = XMVectorSet(0, 1, 0, 0);
+    if (input.IsActionActive("MoveForward"))  accel += flyForward;
+    if (input.IsActionActive("MoveBackward")) accel -= flyForward;
+    if (input.IsActionActive("MoveLeft"))     accel -= right;
+    if (input.IsActionActive("MoveRight"))    accel += right;
+    if (input.IsActionActive("FlyUp"))        accel += up;
+    if (input.IsActionActive("FlyDown"))      accel -= up;
 
-    if (input.IsActionActive("MoveForward"))  pos += forward * speed;
-    if (input.IsActionActive("MoveBackward")) pos -= forward * speed;
-    if (input.IsActionActive("MoveLeft"))     pos -= right * speed;
-    if (input.IsActionActive("MoveRight"))    pos += right * speed;
+    // Нормализация, чтобы движение по диагонали не было быстрее
+    if (XMVectorGetX(XMVector3LengthSq(accel)) > 0.0f) {
+        accel = XMVector3Normalize(accel);
+    }
 
-    // Q / E (Fly Down / Fly Up)
-    if (input.IsActionActive("FlyUp"))        pos += up * speed; // E
-    if (input.IsActionActive("FlyDown"))      pos -= up * speed; // Q
+    float currentSpeed = MovementSpeed;
+    if (input.IsActionActive("Sprint")) currentSpeed *= SprintMultiplier;
 
-    XMStoreFloat3(&m_position, pos);
+    accel *= currentSpeed;
 
-    UpdateMatrices();
+    // Инерция (Frame-Rate Independent Damping)
+    XMVECTOR currentVel = XMLoadFloat3(&m_velocity);
+    currentVel = XMVectorLerp(currentVel, accel, 1.0f - expf(-Damping * deltaTime));
+    XMStoreFloat3(&m_velocity, currentVel);
+
+    // Применение перемещения
+    if (XMVectorGetX(XMVector3LengthSq(currentVel)) > 0.0001f) {
+        XMVECTOR pos = XMLoadFloat3(&m_position);
+        pos += currentVel * deltaTime;
+        XMStoreFloat3(&m_position, pos);
+        m_isDirty = true;
+    }
+
+    // Обновляем тяжелую математику только при движении
+    if (m_isDirty) {
+        UpdateMatrices();
+        m_isDirty = false;
+    }
 }
 
 void Camera::UpdateMatrices() {
     XMVECTOR pos = XMLoadFloat3(&m_position);
-    XMMATRIX rotation = XMMatrixRotationRollPitchYaw(m_pitch, m_yaw, 0);
-    XMVECTOR lookDir = XMVector3TransformCoord(XMVectorSet(0, 0, 1, 0), rotation);
+    XMMATRIX rotation = XMMatrixRotationRollPitchYaw(m_pitch, m_yaw, 0.0f);
+    XMVECTOR lookDir = XMVector3TransformCoord(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), rotation);
     XMVECTOR target = pos + lookDir;
-    XMVECTOR up = XMVectorSet(0, 1, 0, 0);
+    XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 
     XMMATRIX V = XMMatrixLookAtLH(pos, target, up);
     XMStoreFloat4x4(&m_viewMatrix, V);
@@ -99,10 +117,6 @@ void Camera::UpdateMatrices() {
         viewFrustum.Transform(m_frustum, invView);
         m_cullOrigin = m_position;
     }
-}
-
-void Camera::ToggleDebugMode() {
-    m_isDebugMode = !m_isDebugMode;
 }
 
 DirectX::XMMATRIX Camera::GetViewProjectionMatrix() const {

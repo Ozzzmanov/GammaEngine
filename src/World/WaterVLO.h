@@ -7,12 +7,13 @@
 //
 // ================================================================================
 // WaterVLO.h
+// Very Large Object: Water. 
+// Реализует рендер поверхности воды с поддержкой аппаратной тесселяции (DX11),
+// волнами Герстнера и эффектами поглощения глубины/рефракции.
 // ================================================================================
-
 #pragma once
 #include "../Core/Prerequisites.h"
 #include "../Graphics/ConstantBuffer.h"
-#include "../Graphics/Shader.h"
 #include <vector>
 #include <string>
 #include <memory>
@@ -22,100 +23,84 @@
 using namespace DirectX;
 using Microsoft::WRL::ComPtr;
 
-struct WaterVertex {
+// Очень легкая вершина — это просто опорная точка для тесселяции (Patch Control Point)
+struct WaterControlPoint {
     Vector3 Pos;
-    uint32_t Color;
     Vector2 UV;
 };
 
+// Константный буфер для PBR, Волн Герстнера и Поглощения (выровнен по 16 байт)
+__declspec(align(16)) struct CB_WaterParams {
+    Vector4 DeepColor;
+    Vector4 ShallowColor;
+    Vector4 FoamColor;
+    Vector4 Waves[4];
+    Vector3 CamPos;
+    float Time;
+    float TessellationFactor;
+    float TessellationMaxDist;
+    float DepthAbsorptionScale;
+    float GlobalWaveScale;
+    int QualityLevel;
+    int EnableRefraction;
+    Vector2 ZBufferParams; // X = NearZ, Y = FarZ (Для линеаризации глубины)
+};
+
+/**
+ * @class WaterVLO
+ * @brief Класс, описывающий один физический водоем в мире.
+ */
 class WaterVLO {
 public:
-    struct WaterConstants {
-        Vector4 DeepColor;
-        Vector4 ReflectionTint;
-        Vector4 Params1;
-        Vector4 Params2;
-        Vector4 Scroll1;
-        Vector4 Scroll2;
-        Vector3 CamPos;
-        float   Padding;
-    };
-
     WaterVLO(ID3D11Device* device, ID3D11DeviceContext* context);
+    ~WaterVLO() = default;
 
+    /// @brief Загружает параметры водоема из файла .vlo
     bool Load(const std::string& vloPath);
+
+    /// @brief Создает водоем с параметрами по умолчанию, если файл не найден.
     void LoadDefaults(const std::string& uid);
 
-    // рендер с проверкой видимости
     void Render(const Matrix& view, const Matrix& proj,
         const Vector3& camPos, float time,
-        ConstantBuffer<CB_VS_Transform>* transformBuffer,
-        const DirectX::BoundingFrustum& frustum, // Пирамида
-        float renderDistSq,                      // Дистанция (квадрат)
-        bool checkVisibility);                   // Флаг оптимизации
+        const DirectX::BoundingFrustum& frustum,
+        float renderDistSq,
+        bool checkVisibility);
 
     void SetWorldPosition(const Vector3& pos);
     void OverrideSize(Vector2 newSize);
 
 private:
-    void BuildTransparencyTable();
-    void CreateRenderData();
+    void GeneratePatches();
     void UpdateBoundingBox();
 
-    template <typename T>
-    void DecompressVector(const char* data, uint32_t length, std::vector<T>& out) {
-        uint32_t i = 0;
-        while (i < length) {
-            if (data[i] == (char)53) {
-                i++; T val; if (i + sizeof(T) > length) break;
-                memcpy(&val, &data[i], sizeof(T)); i += sizeof(T);
-                if (i >= length) break;
-                unsigned char count = (unsigned char)data[i]; i++;
-                for (int j = 0; j < count; j++) out.push_back(val);
-            }
-            else {
-                if (i + sizeof(T) > length) break;
-                T val; memcpy(&val, &data[i], sizeof(T));
-                out.push_back(val); i += sizeof(T);
-            }
-        }
-    }
-
+private:
     ID3D11Device* m_device;
     ID3D11DeviceContext* m_context;
 
     std::string m_uid;
-    Vector3 m_position = { 0,0,0 };
-    Vector2 m_size = { 100,100 };
-    float m_orientation = 0;
+    Vector3 m_position = { 0.0f, 0.0f, 0.0f };
+    Vector2 m_size = { 100.0f, 100.0f };
+    float m_orientation = 0.0f;
 
-    // Границы для отсечения
     DirectX::BoundingBox m_boundingBox;
+    D3D11_PRIMITIVE_TOPOLOGY m_topology = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-    struct Config {
-        float tessellation = 10.f;
-        Vector4 deepColour;
-        Vector4 reflectionTint;
-        float fresnelConstant;
-        float fresnelExponent;
-        float reflectionScale;
-        Vector2 scrollSpeed1;
-        Vector2 scrollSpeed2;
-        Vector2 waveScale;
-        float windVelocity;
-        float sunPower;
+    // Индивидуальные настройки конкретного водоема (Океан/Озеро)
+    struct WaterConfig {
+        Vector4 DeepColor = Vector4(0.01f, 0.1f, 0.2f, 0.9f);
+        Vector4 ShallowColor = Vector4(0.1f, 0.3f, 0.35f, 0.2f);
+        float WaveAmplitudeMult = 1.0f;
     } m_cfg;
 
-    std::vector<uint32_t> m_alphaData;
-    int m_gridSizeX = 0, m_gridSizeZ = 0;
-
-    ComPtr<ID3D11Buffer> m_vertexBuffer, m_indexBuffer;
+    // Сетка контрольных точек (Patch Control Points)
+    ComPtr<ID3D11Buffer> m_vertexBuffer;
+    ComPtr<ID3D11Buffer> m_indexBuffer;
     UINT m_indexCount = 0;
-    std::unique_ptr<Shader> m_shader;
-    ComPtr<ID3D11InputLayout> m_inputLayout;
-    std::shared_ptr<Texture> m_waveMap;
-    std::shared_ptr<Texture> m_skyMap;
-    std::unique_ptr<ConstantBuffer<WaterConstants>> m_cbWater;
-    ComPtr<ID3D11BlendState> m_blendState;
-    ComPtr<ID3D11SamplerState> m_samplerState;
+
+    std::shared_ptr<Texture> m_normalMap; // Для микро-ряби
+    std::shared_ptr<Texture> m_foamMap;   // Текстура пены
+    std::shared_ptr<Texture> m_envMap;    // Кубмапа (Skybox)
+
+    std::unique_ptr<ConstantBuffer<CB_WaterParams>> m_cbWater;
 };

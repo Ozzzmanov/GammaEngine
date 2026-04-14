@@ -8,7 +8,6 @@
 // ================================================================================
 // Chunk.cpp
 // ================================================================================
-
 #include "Chunk.h"
 #include "Terrain.h"
 #include "../Resources/BwPackedSection.h" 
@@ -20,19 +19,24 @@
 
 namespace fs = std::filesystem;
 
+// Внешняя функция регистрации (FIXME: заменить на коллбэк или шину событий)
 extern void RegisterDetectedVLO(const std::string& uid, const std::string& type, const DirectX::XMFLOAT3& pos, const DirectX::XMFLOAT3& scale);
 
 static inline bool IsGuidChar(char c) {
     return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '.' || c == '_';
 }
 
-std::string ConvertToNewModelPath(const std::string& oldPath) {
+std::string ConvertToNewModelPath(const std::string& oldPath, bool isTree) {
     fs::path p(oldPath);
     std::string filename = p.stem().string();
-    std::string newPath = "Assets/NewModels/Models/" + filename + ".gltf";
 
+    // FIXME: Жесткий хардкод путей. Движок должен сам находить ассеты через ResourceManager
+    // на основе реестра файлов (m_fileRegistry), а не хардкодить "Assets/GammaTrees/Models/".
+    std::string baseDir = isTree ? "Assets/GammaTrees/Models/" : "Assets/NewModels/Models/";
+
+    std::string newPath = baseDir + filename + ".gltf";
     if (!fs::exists(newPath)) {
-        std::string glbPath = "Assets/NewModels/Models/" + filename + ".glb";
+        std::string glbPath = baseDir + filename + ".glb";
         if (fs::exists(glbPath)) return glbPath;
     }
     return newPath;
@@ -45,17 +49,20 @@ Chunk::Chunk(ID3D11Device* device, ID3D11DeviceContext* context)
 Chunk::~Chunk() {}
 
 bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
-    const SpaceParams& params, LevelTextureManager* texMgr)
+    const SpaceParams& params, LevelTextureManager* texMgr,
+    const UnifiedChunkMeta* meta, const float* heightData)
 {
     m_chunkName = fs::path(chunkFilePath).filename().string();
-    m_gridX = gridX; m_gridZ = gridZ;
+    m_gridX = gridX;
+    m_gridZ = gridZ;
 
-    m_position = DirectX::XMFLOAT3(gridX * 100.0f + 50.0f, 0.0f, gridZ * 100.0f + 50.0f);
+    m_position = DirectX::XMFLOAT3(gridX * CHUNK_SIZE + CHUNK_HALF_SIZE, 0.0f, gridZ * CHUNK_SIZE + CHUNK_HALF_SIZE);
     m_boundingBox.Center = m_position;
-    m_boundingBox.Extents = DirectX::XMFLOAT3(50.0f, 500.0f, 50.0f);
+    m_boundingBox.Extents = DirectX::XMFLOAT3(CHUNK_HALF_SIZE, 500.0f, CHUNK_HALF_SIZE);
 
     std::ifstream file(chunkFilePath, std::ios::binary | std::ios::ate);
     if (!file.is_open()) return false;
+
     size_t size = static_cast<size_t>(file.tellg());
     file.seekg(0, std::ios::beg);
     std::vector<char> buffer(size);
@@ -71,10 +78,11 @@ bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
     }
 
     fs::path cdataPath = fs::path(chunkFilePath).replace_extension(".cdata");
-    if (fs::exists(cdataPath)) {
+
+    if (fs::exists(cdataPath) && meta && heightData) {
         m_terrain = std::make_unique<Terrain>();
         m_terrain->SetPosition(m_position.x, m_position.y, m_position.z);
-        m_terrain->Initialize(gridX, gridZ, texMgr);
+        m_terrain->Initialize(meta, heightData, texMgr);
 
         float minH = m_terrain->GetMinHeight();
         float maxH = m_terrain->GetMaxHeight();
@@ -84,6 +92,7 @@ bool Chunk::Load(const std::string& chunkFilePath, int gridX, int gridZ,
         m_boundingBox.Extents.y = std::max((maxH - minH) * 0.5f, 1.0f) + heightPadding;
     }
 
+    // Небольшой запас для куллинга
     m_boundingBox.Extents.x += 2.0f;
     m_boundingBox.Extents.z += 2.0f;
 
@@ -94,6 +103,8 @@ void Chunk::PreScanForWater(const std::vector<char>& buffer) {
     const char* data = buffer.data();
     size_t size = buffer.size();
     if (size < 40) return;
+
+    // Эвристический поиск GUID воды в бинарнике
     for (size_t i = 35; i <= size - 5; ++i) {
         if (data[i] == 'w' && data[i + 1] == 'a' && data[i + 2] == 't' && data[i + 3] == 'e' && data[i + 4] == 'r') {
             size_t start = i - 35;
@@ -119,6 +130,7 @@ void Chunk::ScanForVLOs(std::shared_ptr<BwPackedSection> root) {
 
     for (const auto& info : foundVLOs) {
         if (info.uid.empty()) continue;
+
         DirectX::XMFLOAT3 worldPos;
         worldPos.x = m_position.x + info.position.x;
         worldPos.y = info.position.y;
@@ -129,28 +141,40 @@ void Chunk::ScanForVLOs(std::shared_ptr<BwPackedSection> root) {
 
 void Chunk::RecursiveVloScan(std::shared_ptr<BwPackedSection> section, std::vector<ChunkVloInfo>& outInfos) {
     if (!section) return;
+
     for (auto child : section->GetChildren()) {
         std::string tagName = child->GetName();
         bool isVloContainer = (tagName == "water" || tagName == "vlo");
+
         if (isVloContainer) {
             ChunkVloInfo info;
             info.type = (tagName == "water") ? "water" : "";
+
             for (auto prop : child->GetChildren()) {
                 std::string propName = prop->GetName();
                 const auto& blob = prop->GetBlob();
                 size_t len = blob.size();
-                if (propName == "uid") info.uid = prop->GetValueAsString();
+
+                if (propName == "uid") {
+                    info.uid = prop->GetValueAsString();
+                }
                 else if (len >= 35 && len <= 40 && info.uid.empty()) {
                     std::string val = prop->GetValueAsString();
                     if (val.find("...") == std::string::npos) info.uid = val;
                 }
-                if (propName == "position") info.position = prop->AsVector3();
+
+                if (propName == "position") {
+                    info.position = prop->AsVector3();
+                }
+                // FIXME: Очень хрупкий парсинг матриц по размеру блоба (48 или 64 байта). 
                 if (propName == "transform" && (len == 48 || len == 64)) {
                     const float* m = reinterpret_cast<const float*>(blob.data());
                     if (len == 48) info.position = { m[9], m[10], m[11] };
                     else           info.position = { m[12], m[13], m[14] };
                 }
-                if (propName == "size") info.scale = prop->AsVector3();
+                if (propName == "size") {
+                    info.scale = prop->AsVector3();
+                }
             }
             if (!info.uid.empty()) {
                 if (info.type.empty()) info.type = "water";
@@ -163,6 +187,7 @@ void Chunk::RecursiveVloScan(std::shared_ptr<BwPackedSection> section, std::vect
 
 void Chunk::ScanForModels(std::shared_ptr<BwPackedSection> root) {
     if (!root) return;
+
     std::vector<std::shared_ptr<BwPackedSection>> stack;
     stack.push_back(root);
 
@@ -170,26 +195,29 @@ void Chunk::ScanForModels(std::shared_ptr<BwPackedSection> root) {
         auto section = stack.back();
         stack.pop_back();
         std::string type = section->GetName();
-        // FIX ME ИСПРАВИТЬ ДЛЯ РЕАЛЬНЫХ ШЕЛОВ
-        if (type == "model" || type == "shell") {
+
+        if (type == "model" || type == "shell" || type == "speedtree") {
             std::string resource;
             DirectX::XMFLOAT4X4 localTransform;
             DirectX::XMStoreFloat4x4(&localTransform, DirectX::XMMatrixIdentity());
             bool hasRes = false;
 
             for (auto child : section->GetChildren()) {
-                if (child->GetName() == "resource") {
-                    resource = ConvertToNewModelPath(child->GetValueAsString());
+                std::string childName = child->GetName();
+
+                if (childName == "resource" || childName == "spt") {
+                    std::string rawPath = child->GetValueAsString();
+                    resource = ConvertToNewModelPath(rawPath, type == "speedtree");
                     hasRes = true;
                 }
-                else if (child->GetName() == "transform") {
+                else if (childName == "transform") {
                     localTransform = child->AsMatrix();
                 }
             }
 
             if (hasRes) {
-                float chunkCornerX = (float)m_gridX * 100.0f;
-                float chunkCornerZ = (float)m_gridZ * 100.0f;
+                float chunkCornerX = static_cast<float>(m_gridX) * CHUNK_SIZE;
+                float chunkCornerZ = static_cast<float>(m_gridZ) * CHUNK_SIZE;
 
                 DirectX::XMMATRIX mLocal = DirectX::XMLoadFloat4x4(&localTransform);
                 DirectX::XMMATRIX mOffset = DirectX::XMMatrixTranslation(chunkCornerX, 0.0f, chunkCornerZ);
@@ -205,13 +233,28 @@ void Chunk::ScanForModels(std::shared_ptr<BwPackedSection> root) {
 
                 DirectX::XMFLOAT4 q;
                 DirectX::XMStoreFloat4(&q, rotQuat);
-                if (q.w < 0.0f) { q.x = -q.x; q.y = -q.y; q.z = -q.z; q.w = -q.w; }
+                if (q.w < 0.0f) {
+                    q.x = -q.x; q.y = -q.y; q.z = -q.z; q.w = -q.w;
+                }
                 entity.RotXYZ = { q.x, q.y, q.z };
 
-                m_staticEntities.push_back(entity);
+                if (type == "speedtree") {
+                    m_floraEntities.push_back(entity);
+                }
+                else {
+                    m_staticEntities.push_back(entity);
+                }
             }
         }
 
-        for (auto child : section->GetChildren()) stack.push_back(child);
+        for (auto child : section->GetChildren()) {
+            stack.push_back(child);
+        }
+    }
+}
+
+void Chunk::AllocateTerrain() {
+    if (!m_terrain) {
+        m_terrain = std::make_unique<Terrain>();
     }
 }

@@ -11,7 +11,7 @@
 
 Timer::Timer()
     : m_secondsPerCount(0.0), m_prevTime(0), m_startTime(0),
-    m_deltaTime(0.0f), m_totalTime(0.0f), m_sampleIndex(0)
+    m_deltaTime(0.0f), m_totalTime(0.0f)
 {
     __int64 countsPerSec;
     QueryPerformanceFrequency((LARGE_INTEGER*)&countsPerSec);
@@ -36,16 +36,13 @@ void Timer::Tick() {
 
     if (deltaCounts < 0) deltaCounts = 0;
 
-    // Берем сырую дельту 
-    m_deltaTime = (float)(deltaCounts * m_secondsPerCount);
+    m_deltaTime = static_cast<float>(deltaCounts * m_secondsPerCount);
 
-    // FIX ME переделать. ВАЖНО: Защита от "Спирали смерти" и провалов под текстуры!
-    // Если кадр длился дольше 1/10 секунды (зависание, перетаскивание окна),
-    // мы жестко обрезаем дельту, чтобы физика и движение не взорвались.
+    // Защита от "Спирали смерти" (Death Spiral) при зависаниях, загрузках 
+    // или перетаскивании окна за рамку в Windows.
     if (m_deltaTime > 0.1f) {
         m_deltaTime = 0.1f;
     }
 
-    // Общее время считаем точно от старта
-    m_totalTime = (float)((currTime - m_startTime) * m_secondsPerCount);
+    m_totalTime = static_cast<float>((currTime - m_startTime) * m_secondsPerCount);
 }

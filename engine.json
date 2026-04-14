@@ -1,64 +1,213 @@
 {
-  "System": {
-    "WindowWidth": 1920,
-    "WindowHeight": 1080,
-    "WindowTitle": "Gamma Engine",
-    "Windowed": true,
-    "VSync": false
-  },
-  "Textures": {
-    "MaxResolution": 4096,
-    "UseBC7Compression": false,
-    "ForceAnisotropy": 16,
-    "TerrainTextureSize": 1024,
-    "UseTextureArrays": false
-  },
-  "Logging": {
-    "Render": true,
-    "Texture": true,
-    "Terrain": true,
-    "Physics": true,
-    "System": true
-  },
-  "Graphics": {
-    "RenderDistance": 2000.0,
-    "FOV": 45.0,
-    "NearZ": 0.1,
-    "FarZ": 10000.0,
-    "AnisotropyLevel": 16,
-    "MipLODBias": -0.5,
-    "LOD": {
-      "Enabled": true,
-      "Distance1": 100.0,
-      "Distance2": 250.0,
-      "Distance3": 1000.0
+    "AutoExposure": {
+        "Enabled": true,
+        "MaxExposure": 10.0,
+        "MinExposure": 0.05000000074505806,
+        "SpeedDown": 0.20000000298023224,
+        "SpeedUp": 0.5
+    },
+    "Bloom": {
+        "Enabled": true,
+        "Intensity": 0.3,
+        "Threshold": 1.0
+    },
+    "EditorInput": {
+        "EditorFlyDown": "Q",
+        "EditorFlyUp": "E",
+        "EditorMoveBackward": "S",
+        "EditorMoveForward": "W",
+        "EditorMoveLeft": "A",
+        "EditorMoveRight": "D"
+    },
+    "EditorProfile": {
+        "FloraLOD": {
+            "Distance1": 100.0,
+            "Distance2": 250.0,
+            "Distance3": 500.0,
+            "Enabled": true
+        },
+        "Graphics": {
+            "FOV": 45.0,
+            "FarZ": 8000.0,
+            "NearZ": 1.0,
+            "RenderDistance": 4094.0
+        },
+        "LOD": {
+            "Distance1": 100.0,
+            "Distance2": 250.0,
+            "Distance3": 500.0,
+            "Enabled": true
+        },
+        "Lighting": {
+            "MaxLightDistance": 200.0
+        },
+        "Optimization": {
+            "EnableFrustumCulling": true,
+            "EnableOcclusionCulling": false,
+            "EnableSizeCulling": false,
+            "EnableZPrepass": false,
+            "MinPixelSize": 5.0
+        },
+        "Shadows": {
+            "CascadeCount": 3,
+            "EnableShadowAlphaCulling": true,
+            "EnableShadowFrustumCulling": true,
+            "EnableShadowSizeCulling": true,
+            "Enabled": true,
+            "MaxShadowDistance": 996.0,
+            "MinShadowSize": 1.5,
+            "Resolution": 1024,
+            "ShadowAlphaCullingDistance": 100.0,
+            "ShadowSizeCullingDistance": 100.0,
+            "SoftShadows": true,
+            "Splits": [
+                50.0,
+                150.0,
+                300.0
+            ],
+            "UpdateEveryFrame": true
+        },
+        "TerrainLOD": {
+            "Distance1": 500.0,
+            "Distance2": 800.0,
+            "EnableRVT": true,
+            "Enabled": true,
+            "RVTCascade0Coverage": 500.0,
+            "RVTCascade1Coverage": 800.0,
+            "RVTCascade2Coverage": 4500.0,
+            "RVTCascade3Coverage": 16000.0,
+            "RVTCascadeCount": 3,
+            "RVTNearBlendDistance": 100.0,
+            "RVTResolution": 2048,
+            "Step0": 1,
+            "Step1": 6,
+            "Step2": 12
+        }
+    },
+    "Graphics": {
+        "FOV": 45.0,
+        "FarZ": 8000.0,
+        "FloraLOD": {
+            "Distance1": 100.0,
+            "Distance2": 250.0,
+            "Distance3": 500.0,
+            "Enabled": true
+        },
+        "LOD": {
+            "Distance1": 100.0,
+            "Distance2": 250.0,
+            "Distance3": 500.0,
+            "Enabled": true
+        },
+        "NearZ": 1.0,
+        "RenderDistance": 2118.0,
+        "TerrainLOD": {
+            "Distance1": 500.0,
+            "Distance2": 800.0,
+            "EnableRVT": true,
+            "Enabled": true,
+            "RVTCascade0Coverage": 500.0,
+            "RVTCascade1Coverage": 800.0,
+            "RVTCascade2Coverage": 4500.0,
+            "RVTCascadeCount": 3,
+            "RVTNearBlendDistance": 50.0,
+            "RVTResolution": 2048,
+            "Step0": 1,
+            "Step1": 6,
+            "Step2": 12
+        }
+    },
+    "Input": {
+        "FlyDown": "Q",
+        "FlyUp": "E",
+        "Jump": "SPACE",
+        "MoveBackward": "S",
+        "MoveForward": "W",
+        "MoveLeft": "A",
+        "MoveRight": "D",
+        "RenderDistDown": "Z",
+        "RenderDistUp": "X",
+        "Sprint": "SHIFT",
+        "Test": "K",
+        "ToggleCulling": "F1",
+        "ToggleDebugCam": "F2",
+        "ToggleHZB": "F4",
+        "ToggleLODs": "F3",
+        "ToggleWireframe": "TAB"
+    },
+    "Lighting": {
+        "MaxLightDistance": 200.0
+    },
+    "Logging": {
+        "Physics": true,
+        "Render": true,
+        "System": true,
+        "Terrain": true,
+        "Texture": true
+    },
+    "Optimization": {
+        "EnableFrustumCulling": true,
+        "EnableOcclusionCulling": true,
+        "EnableSizeCulling": true,
+        "EnableZPrepass": false,
+        "MinPixelSize": 5.0
+    },
+    "PostProcess": {
+        "EnableLensFlares": true
+    },
+    "Shadows": {
+        "CascadeCount": 3,
+        "EnableShadowAlphaCulling": true,
+        "EnableShadowFrustumCulling": true,
+        "EnableShadowSizeCulling": true,
+        "Enabled": true,
+        "MaxShadowDistance": 503.0,
+        "MinShadowSize": 1.5,
+        "Resolution": 1024,
+        "ShadowAlphaCullingDistance": 100.0,
+        "ShadowSizeCullingDistance": 100.0,
+        "SoftShadows": true,
+        "Splits": [
+            50.0,
+            100.0,
+            200.0
+        ],
+        "UpdateEveryFrame": true
+    },
+    "System": {
+        "VSync": false,
+        "WindowHeight": 1080,
+        "WindowTitle": "Gamma Engine",
+        "WindowWidth": 1920,
+        "Windowed": true
+    },
+    "VolumetricLighting": {
+        "BlurRadius": 2.0,
+        "Density": 0.05,
+        "Enabled": true,
+        "GAnisotropy": 0.75,
+        "HalfResolution": false,
+        "QualitySteps": 32,
+        "RayLength": 100.0
+    },
+    "Water": {
+        "EnableDepthAbsorption": true,
+        "EnableFoam": true,
+        "EnableRefraction": true,
+        "EnableSSR": true,
+        "EnableTessellation": false,
+        "GlobalWaveScale": 1.0,
+        "QualityLevel": 4,
+        "TessellationMaxDistance": 400.0,
+        "TessellationMaxFactor": 16.0,
+        "WaveCascades": 4
+    },
+    "Wind": {
+        "LeafFlutterAmplitude": 0.015,
+        "LeafFlutterSpeed": 8.0,
+        "LeafMicroTurbulence": 8.0,
+        "RootStiffness": 0.1,
+        "Speed": 2.0,
+        "TrunkBendAmplitude": 0.08
     }
-  },
-  "Optimization": {
-    "EnableOcclusionCulling": true,
-    "EnableFrustumCulling": true,
-    "EnableSizeCulling": true,
-    "MinPixelSize": 5.0,
-    "OcclusionAlgorithm": "HZB",
-    "UseStaticBatching": true,
-    "EnableZPrepass": false
-  },
-  "Input": {
-    "MouseSensitivity": 0.003,
-    "InvertY": false,
-    "MoveForward": "W",
-    "MoveBackward": "S",
-    "MoveLeft": "A",
-    "MoveRight": "D",
-    "FlyUp": "E",
-    "FlyDown": "Q",
-    "Sprint": "VK_SHIFT",
-    "ToggleCulling": "VK_F1",
-    "ToggleDebugCam": "VK_F2",
-    "ToggleLODs": "VK_F3",
-    "ToggleHZB": "VK_F4",
-    "ToggleWireframe": "VK_TAB",
-    "RenderDistUp": "X",
-    "RenderDistDown": "Z"
-  }
 }

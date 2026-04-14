@@ -7,12 +7,15 @@
 //
 // ================================================================================
 // InputSystem.cpp
-// Реализация системы ввода с поддержкой Action Mapping и отслеживанием состояний клавиш.
 // ================================================================================
 #include "InputSystem.h"
 
+float InputSystem::s_scrollDelta = 0.0f;
+
 InputSystem::InputSystem()
-    : m_prevMousePos({ 0, 0 }), m_mouseDelta({ 0, 0 }), m_firstMouse(true) {
+    : m_prevMousePos({ 0, 0 }), m_mouseDelta({ 0, 0 }), m_firstMouse(true)
+{
+    ZeroMemory(m_keysCurrent, sizeof(m_keysCurrent));
     ZeroMemory(m_keysPrevious, sizeof(m_keysPrevious));
 }
 
@@ -21,11 +24,26 @@ InputSystem::~InputSystem() {}
 void InputSystem::Initialize() {
     m_firstMouse = true;
     m_mouseDelta = { 0, 0 };
-    m_actionMap.clear(); // Очищаем бинды при рестарте
+    m_actionMap.clear();
+    ZeroMemory(m_keysCurrent, sizeof(m_keysCurrent));
+    ZeroMemory(m_keysPrevious, sizeof(m_keysPrevious));
 }
 
 void InputSystem::Update(HWND hWnd) {
-    // Мышь
+    // Забираем скролл (даже если инпут заблокирован, мы сохраняем дельту, но обнуляем глобальную)
+    m_scrollDelta = s_scrollDelta;
+    s_scrollDelta = 0.0f;
+
+    // Обновление состояний клавиатуры (Двойной буфер)
+    // Делаем это ДО проверки m_blockInput, чтобы состояния всегда были консистентны.
+    for (int i = 0; i < 256; ++i) {
+        m_keysPrevious[i] = m_keysCurrent[i];
+        m_keysCurrent[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+    }
+
+    if (m_blockInput) return; // Глушим обновление мыши, если мы в UI
+
+    // Обновление мыши (FIXME: В будущем лучше перейти на Raw Input, а не GetCursorPos)
     POINT curMouse;
     GetCursorPos(&curMouse);
     ScreenToClient(hWnd, &curMouse);
@@ -38,36 +56,29 @@ void InputSystem::Update(HWND hWnd) {
     m_mouseDelta.x = (float)(curMouse.x - m_prevMousePos.x) * 0.003f;
     m_mouseDelta.y = (float)(curMouse.y - m_prevMousePos.y) * 0.003f;
     m_prevMousePos = curMouse;
-
-    // Клавиатура (запоминаем состояние для IsKeyPressed)
-    for (int i = 0; i < 256; ++i) {
-        m_keysPrevious[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
-    }
 }
 
-// --- Low Level ---
+void InputSystem::SetBlockInput(bool block) {
+    if (block != m_blockInput) {
+        m_firstMouse = true;
+        m_mouseDelta = { 0.0f, 0.0f }; // Гасим инерцию камеры при переходе в UI!
+    }
+    m_blockInput = block;
+}
+
+// Low Level
 bool InputSystem::IsKeyDown(int vKey) const {
-    return (GetAsyncKeyState(vKey) & 0x8000) != 0;
+    if (m_blockInput) return false;
+    return m_keysCurrent[vKey];
 }
 
-bool InputSystem::IsKeyPressed(int vKey) {
-    bool isDown = (GetAsyncKeyState(vKey) & 0x8000) != 0;
-    // FIX ME Возвращаем true если нажата СЕЙЧАС, но НЕ была нажата в прошлом кадре
-    // (Примечание: m_keysPrevious здесь обновляется в Update, поэтому используем простую логику)
-    // Для более точного Tap нужно сравнивать с состоянием ДО апдейта.
-    static bool wasDown[256] = { false };
-
-    if (isDown && !wasDown[vKey]) {
-        wasDown[vKey] = true;
-        return true;
-    }
-    if (!isDown) {
-        wasDown[vKey] = false;
-    }
-    return false;
+bool InputSystem::IsKeyPressed(int vKey) const {
+    if (m_blockInput) return false;
+    // Возвращаем true, только если кнопка зажата СЕЙЧАС, но НЕ была зажата в ПРОШЛОМ кадре
+    return m_keysCurrent[vKey] && !m_keysPrevious[vKey];
 }
 
-// --- Action Mapping ---
+// Action Mapping ---
 void InputSystem::BindAction(const std::string& actionName, int vKey) {
     m_actionMap[actionName] = vKey;
 }
@@ -80,7 +91,7 @@ bool InputSystem::IsActionActive(const std::string& actionName) const {
     return false;
 }
 
-bool InputSystem::IsActionTriggered(const std::string& actionName) {
+bool InputSystem::IsActionTriggered(const std::string& actionName) const {
     auto it = m_actionMap.find(actionName);
     if (it != m_actionMap.end()) {
         return IsKeyPressed(it->second);

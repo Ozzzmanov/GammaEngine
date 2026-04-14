@@ -4,6 +4,7 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//
 // ================================================================================
 // TerrainGpuScene.cpp
 // ================================================================================
@@ -11,6 +12,10 @@
 #include "../Graphics/ComputeShader.h"
 #include "../Core/Logger.h"
 #include "../Graphics/LevelTextureManager.h"
+#include "../Config/EngineConfig.h"
+
+constexpr int CHUNK_LOOKUP_SIZE = 512;
+constexpr int CHUNK_LOOKUP_OFFSET = 256;
 
 TerrainGpuScene::TerrainGpuScene(ID3D11Device* device, ID3D11DeviceContext* context)
     : m_device(device), m_context(context) {
@@ -21,16 +26,21 @@ TerrainGpuScene::~TerrainGpuScene() = default;
 void TerrainGpuScene::Initialize() {
     m_cullingShader = std::make_unique<ComputeShader>(m_device, m_context);
     if (!m_cullingShader->Load(L"Assets/Shaders/TerrainCulling.hlsl")) {
-        Logger::Error(LogCategory::Render, "Failed to load TerrainCulling.hlsl");
+        GAMMA_LOG_ERROR(LogCategory::Render, "Failed to load TerrainCulling.hlsl");
     }
 
     D3D11_BUFFER_DESC cbDesc = {};
     cbDesc.Usage = D3D11_USAGE_DYNAMIC;
     cbDesc.ByteWidth = sizeof(CullingConstants);
-    if (cbDesc.ByteWidth % 16 != 0) cbDesc.ByteWidth += 16 - (cbDesc.ByteWidth % 16);
+
+    // Защита от кривого выравнивания
+    if (cbDesc.ByteWidth % 16 != 0) {
+        cbDesc.ByteWidth += 16 - (cbDesc.ByteWidth % 16);
+    }
+
     cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
     cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    m_device->CreateBuffer(&cbDesc, nullptr, m_cullingCB.GetAddressOf());
+    HR_CHECK_VOID(m_device->CreateBuffer(&cbDesc, nullptr, m_cullingCB.GetAddressOf()), "Failed to create Culling CB");
 
     D3D11_SAMPLER_DESC sampDesc = {};
     sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
@@ -38,16 +48,12 @@ void TerrainGpuScene::Initialize() {
     sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
     sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     sampDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-
-    // Слегка размывает маску, убирая ступеньки точности
     sampDesc.MipLODBias = -0.5f;
-
     sampDesc.MinLOD = 0;
     sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
+    HR_CHECK_VOID(m_device->CreateSamplerState(&sampDesc, m_samplerPointClamp.GetAddressOf()), "Failed to create PointClamp Sampler");
 
-    m_device->CreateSamplerState(&sampDesc, m_samplerPointClamp.GetAddressOf());
-
-    TerrainGpuScene::CreateGrid();
+    CreateGrid();
 }
 
 void TerrainGpuScene::AddChunk(const ChunkGpuData& data, const DirectX::BoundingBox& aabb) {
@@ -58,31 +64,9 @@ void TerrainGpuScene::AddChunk(const ChunkGpuData& data, const DirectX::Bounding
 void TerrainGpuScene::BuildGpuBuffers(LevelTextureManager* texManager) {
     if (m_cpuChunkData.empty()) return;
 
-    UINT numChunks = (UINT)m_cpuChunkData.size();
+    UINT numChunks = static_cast<UINT>(m_cpuChunkData.size());
 
-    // Создаем буфер глобальных материалов (GlobalMaterialBuffer)
-    if (texManager) {
-        const auto& materials = texManager->GetMaterials();
-        if (!materials.empty()) {
-            D3D11_BUFFER_DESC matDesc = {};
-            matDesc.Usage = D3D11_USAGE_IMMUTABLE;
-            matDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-            matDesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-            matDesc.ByteWidth = (UINT)(sizeof(TerrainMaterial) * materials.size());
-            matDesc.StructureByteStride = sizeof(TerrainMaterial);
-
-            D3D11_SUBRESOURCE_DATA matInit = { materials.data(), 0, 0 };
-            m_device->CreateBuffer(&matDesc, &matInit, m_materialBuffer.ReleaseAndGetAddressOf());
-
-            D3D11_SHADER_RESOURCE_VIEW_DESC matSrvDesc = {};
-            matSrvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
-            matSrvDesc.Buffer.NumElements = (UINT)materials.size();
-            m_device->CreateShaderResourceView(m_materialBuffer.Get(), &matSrvDesc, m_materialSRV.ReleaseAndGetAddressOf());
-        }
-    }
-
-    // AABB нужен только для куллинга, а ChunkGpuData для рендера.
-    // Для оптимизации памяти используем структуру ShaderChunkInfo только для куллинга.
+    // Culling data (AABBs)
     struct ShaderChunkInfo {
         DirectX::XMFLOAT3 Extents; float Pad1;
         DirectX::XMFLOAT3 Center;  float Pad2;
@@ -93,198 +77,317 @@ void TerrainGpuScene::BuildGpuBuffers(LevelTextureManager* texManager) {
         cullData[i].Extents = m_cpuAABBs[i].Extents;
     }
 
-    // Буфер для куллинга (AABBs)
-    ComPtr<ID3D11Buffer> cullingDataBuffer;
-    ComPtr<ID3D11ShaderResourceView> cullingDataSRV;
     D3D11_BUFFER_DESC desc = {};
     desc.Usage = D3D11_USAGE_IMMUTABLE;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-
     desc.ByteWidth = sizeof(ShaderChunkInfo) * numChunks;
     desc.StructureByteStride = sizeof(ShaderChunkInfo);
+
     D3D11_SUBRESOURCE_DATA initData = { cullData.data(), 0, 0 };
-    m_device->CreateBuffer(&desc, &initData, cullingDataBuffer.GetAddressOf());
+    m_device->CreateBuffer(&desc, &initData, m_cullingDataBuffer.ReleaseAndGetAddressOf());
 
     D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
     srvDesc.Buffer.NumElements = numChunks;
-    m_device->CreateShaderResourceView(cullingDataBuffer.Get(), &srvDesc, cullingDataSRV.GetAddressOf());
+    m_device->CreateShaderResourceView(m_cullingDataBuffer.Get(), &srvDesc, m_cullingDataSRV.ReleaseAndGetAddressOf());
 
-    // Буфер для рендера (ChunkGpuData)
+    // Chunk data (рендер)
     desc.ByteWidth = sizeof(ChunkGpuData) * numChunks;
     desc.StructureByteStride = sizeof(ChunkGpuData);
     initData.pSysMem = m_cpuChunkData.data();
     m_device->CreateBuffer(&desc, &initData, m_chunkDataBuffer.ReleaseAndGetAddressOf());
     m_device->CreateShaderResourceView(m_chunkDataBuffer.Get(), &srvDesc, m_chunkDataSRV.ReleaseAndGetAddressOf());
 
-    // Буфер видимых индексов (UAV + SRV)
+    // Visible indices buffer
     desc.Usage = D3D11_USAGE_DEFAULT;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-    desc.ByteWidth = sizeof(uint32_t) * numChunks;
+    desc.ByteWidth = sizeof(uint32_t) * numChunks * 3; // Для 3 LODов
     desc.StructureByteStride = sizeof(uint32_t);
     m_device->CreateBuffer(&desc, nullptr, m_visibleIndicesBuffer.ReleaseAndGetAddressOf());
+
+    srvDesc.Buffer.NumElements = numChunks * 3;
     m_device->CreateShaderResourceView(m_visibleIndicesBuffer.Get(), &srvDesc, m_visibleIndicesSRV.ReleaseAndGetAddressOf());
 
     D3D11_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
-    uavDesc.Buffer.NumElements = numChunks;
+    uavDesc.Buffer.NumElements = numChunks * 3;
     m_device->CreateUnorderedAccessView(m_visibleIndicesBuffer.Get(), &uavDesc, m_visibleIndicesUAV.ReleaseAndGetAddressOf());
 
-    // Indirect Args Buffer
-    // 5 uints: IndexCount, InstanceCount, StartIndex, BaseVertex, StartInstance
-    uint32_t indirectArgsInit[5] = { 0, 0, 0, 0, 0 };
-    // Заметка: количество индексов на один чанк (сетка 37x37) = 36 * 36 * 6 = 7776.
-    indirectArgsInit[0] = 7776;
+    // Indirect args (3 LOD команды)
+    uint32_t indirectArgsInit[15] = {
+        m_lodIndexCounts[0], 0, m_lodIndexOffsets[0], 0, 0,
+        m_lodIndexCounts[1], 0, m_lodIndexOffsets[1], 0, numChunks,
+        m_lodIndexCounts[2], 0, m_lodIndexOffsets[2], 0, numChunks * 2
+    };
 
-    desc.ByteWidth = sizeof(uint32_t) * 5;
-    desc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
-    initData.pSysMem = indirectArgsInit;
+    D3D11_BUFFER_DESC argsDesc = {};
+    argsDesc.ByteWidth = sizeof(uint32_t) * 15;
+    argsDesc.Usage = D3D11_USAGE_DEFAULT;
+    argsDesc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+    argsDesc.MiscFlags = D3D11_RESOURCE_MISC_DRAWINDIRECT_ARGS | D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+    D3D11_SUBRESOURCE_DATA argsData = { indirectArgsInit, 0, 0 };
 
-    m_device->CreateBuffer(&desc, &initData, m_indirectArgsBuffer.ReleaseAndGetAddressOf());
+    m_device->CreateBuffer(&argsDesc, &argsData, m_indirectArgsBuffer.ReleaseAndGetAddressOf());
+    m_device->CreateBuffer(&argsDesc, &argsData, m_indirectArgsResetBuffer.ReleaseAndGetAddressOf());
 
-    indirectArgsInit[1] = 0; // Для сброса InstanceCount = 0
-    m_device->CreateBuffer(&desc, &initData, m_indirectArgsResetBuffer.ReleaseAndGetAddressOf());
+    D3D11_UNORDERED_ACCESS_VIEW_DESC rawUavDesc = {};
+    rawUavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+    rawUavDesc.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+    rawUavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
+    rawUavDesc.Buffer.NumElements = 15;
+    m_device->CreateUnorderedAccessView(m_indirectArgsBuffer.Get(), &rawUavDesc, m_indirectArgsUAV.ReleaseAndGetAddressOf());
 
-    uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-    uavDesc.Buffer.Flags = D3D11_BUFFER_UAV_FLAG_RAW;
-    uavDesc.Buffer.NumElements = 5;
-    m_device->CreateUnorderedAccessView(m_indirectArgsBuffer.Get(), &uavDesc, m_indirectArgsUAV.ReleaseAndGetAddressOf());
+    // Shadow буферы
+    for (int i = 0; i < 3; ++i) {
+        desc.ByteWidth = sizeof(uint32_t) * numChunks * 3;
+        desc.StructureByteStride = sizeof(uint32_t);
+        m_device->CreateBuffer(&desc, nullptr, m_shadowVisibleIndicesBuffer[i].ReleaseAndGetAddressOf());
 
-    // Временно сохраняем Culling SRV как член класса
-    // FIXME: !!! Добавь ComPtr<ID3D11ShaderResourceView> m_cullingDataSRV в хидер!
-    m_cullingDataSRV = cullingDataSRV;
+        srvDesc.Buffer.NumElements = numChunks * 3;
+        m_device->CreateShaderResourceView(m_shadowVisibleIndicesBuffer[i].Get(), &srvDesc, m_shadowVisibleIndicesSRV[i].ReleaseAndGetAddressOf());
+        m_device->CreateUnorderedAccessView(m_shadowVisibleIndicesBuffer[i].Get(), &uavDesc, m_shadowVisibleIndicesUAV[i].ReleaseAndGetAddressOf());
+
+        D3D11_BUFFER_DESC shArgsDesc = argsDesc;
+        m_device->CreateBuffer(&shArgsDesc, &argsData, m_shadowIndirectArgsBuffer[i].ReleaseAndGetAddressOf());
+        m_device->CreateUnorderedAccessView(m_shadowIndirectArgsBuffer[i].Get(), &rawUavDesc, m_shadowIndirectArgsUAV[i].ReleaseAndGetAddressOf());
+    }
+
+    // CHUNK SLICE LOOKUP TEXTURE — O(1) для RvtBaker
+    {
+        // FIXME: Текстура 512x512 ограничивает мир до 51.2 км x 51.2 км. 
+        // Для бесконечных миров потребуется Sparse Texture или хеш-таблица на GPU.
+        std::vector<uint32_t> lookupData(CHUNK_LOOKUP_SIZE * CHUNK_LOOKUP_SIZE, 0xFFFFFFFF);
+
+        for (uint32_t i = 0; i < numChunks; ++i) {
+            int gx = static_cast<int>(std::floor((m_cpuChunkData[i].WorldPos.x - 50.0f) / 100.0f));
+            int gz = static_cast<int>(std::floor((m_cpuChunkData[i].WorldPos.z - 50.0f) / 100.0f));
+
+            int lx = gx + CHUNK_LOOKUP_OFFSET;
+            int lz = gz + CHUNK_LOOKUP_OFFSET;
+
+            if (lx >= 0 && lx < CHUNK_LOOKUP_SIZE && lz >= 0 && lz < CHUNK_LOOKUP_SIZE) {
+                lookupData[lz * CHUNK_LOOKUP_SIZE + lx] = i;
+            }
+            else {
+                GAMMA_LOG_WARN(LogCategory::Render, "Chunk out of bounds for Lookup Texture!");
+            }
+        }
+
+        D3D11_TEXTURE2D_DESC texDesc = {};
+        texDesc.Width = CHUNK_LOOKUP_SIZE;
+        texDesc.Height = CHUNK_LOOKUP_SIZE;
+        texDesc.MipLevels = 1;
+        texDesc.ArraySize = 1;
+        texDesc.Format = DXGI_FORMAT_R32_UINT;
+        texDesc.SampleDesc.Count = 1;
+        texDesc.Usage = D3D11_USAGE_IMMUTABLE;
+        texDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+        D3D11_SUBRESOURCE_DATA texData = {};
+        texData.pSysMem = lookupData.data();
+        texData.SysMemPitch = CHUNK_LOOKUP_SIZE * sizeof(uint32_t);
+
+        m_device->CreateTexture2D(&texDesc, &texData, m_chunkSliceLookup.ReleaseAndGetAddressOf());
+
+        D3D11_SHADER_RESOURCE_VIEW_DESC lookupSRVDesc = {};
+        lookupSRVDesc.Format = DXGI_FORMAT_R32_UINT;
+        lookupSRVDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        lookupSRVDesc.Texture2D.MipLevels = 1;
+        m_device->CreateShaderResourceView(m_chunkSliceLookup.Get(), &lookupSRVDesc, m_chunkSliceLookupSRV.ReleaseAndGetAddressOf());
+
+        GAMMA_LOG_INFO(LogCategory::Render, "Built Chunk Slice Lookup Texture (512x512).");
+    }
 }
 
 void TerrainGpuScene::PerformCulling(
     const DirectX::XMMATRIX& view, const DirectX::XMMATRIX& proj,
     const DirectX::XMMATRIX& prevView, const DirectX::XMMATRIX& prevProj,
-    const DirectX::BoundingFrustum& frustum, const DirectX::XMFLOAT3& cameraPos,
-    ID3D11ShaderResourceView* hzbSRV, DirectX::XMFLOAT2 hzbSize,
-    bool enableFrustum, bool enableOcclusion, float renderDistance)
+    const DirectX::BoundingFrustum& frustum,
+    const DirectX::XMFLOAT3& cameraPos,
+    ID3D11ShaderResourceView* hzbSRV,
+    DirectX::XMFLOAT2 hzbSize,
+    bool enableFrustum, bool enableOcclusion,
+    bool enableLODs, float renderDistance)
 {
     if (m_cpuChunkData.empty() || !m_cullingShader) return;
 
+    // Сбрасываем аргументы отрисовки (InstanceCount = 0)
     m_context->CopyResource(m_indirectArgsBuffer.Get(), m_indirectArgsResetBuffer.Get());
 
+    // Обновляем параметры
     D3D11_MAPPED_SUBRESOURCE mapped;
     if (SUCCEEDED(m_context->Map(m_cullingCB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
-        CullingConstants* data = (CullingConstants*)mapped.pData;
+        CullingConstants* data = static_cast<CullingConstants*>(mapped.pData);
 
         DirectX::XMStoreFloat4x4(&data->ViewProj, DirectX::XMMatrixTranspose(view * proj));
-        // Записываем матрицу прошлого кадра для точного HZB
         DirectX::XMStoreFloat4x4(&data->PrevViewProj, DirectX::XMMatrixTranspose(prevView * prevProj));
 
         DirectX::XMVECTOR planes[6];
         frustum.GetPlanes(&planes[0], &planes[1], &planes[2], &planes[3], &planes[4], &planes[5]);
-        for (int i = 0; i < 6; ++i) DirectX::XMStoreFloat4(&data->FrustumPlanes[i], planes[i]);
+        for (int i = 0; i < 6; ++i) {
+            DirectX::XMStoreFloat4(&data->FrustumPlanes[i], planes[i]);
+        }
 
         data->CameraPos = cameraPos;
-        data->NumChunks = (uint32_t)m_cpuChunkData.size();
+        data->NumChunks = static_cast<uint32_t>(m_cpuChunkData.size());
         data->HZBSize = hzbSize;
-        data->MaxDistanceSq = renderDistance * renderDistance; // Квадрат дистанции
+        data->MaxDistanceSq = renderDistance * renderDistance;
         data->EnableFrustum = enableFrustum ? 1 : 0;
         data->EnableOcclusion = enableOcclusion ? 1 : 0;
+
+        const auto& tLod = EngineConfig::Get().GetActiveProfile().TerrainLod;
+        if (tLod.Enabled && enableLODs) {
+            data->LOD1_DistSq = tLod.Dist1 * tLod.Dist1;
+            data->LOD2_DistSq = tLod.Dist2 * tLod.Dist2;
+        }
+        else {
+            data->LOD1_DistSq = 30000.0f * 30000.0f;
+            data->LOD2_DistSq = 30000.0f * 30000.0f;
+        }
+        data->Pad = 0;
 
         m_context->Unmap(m_cullingCB.Get(), 0);
     }
 
-    // Биндинг и Dispatch
+    // Выполняем Compute Shader
     m_cullingShader->Bind();
     m_context->CSSetConstantBuffers(0, 1, m_cullingCB.GetAddressOf());
     m_context->CSSetSamplers(0, 1, m_samplerPointClamp.GetAddressOf());
 
-    ID3D11ShaderResourceView* srvs[] = { m_cullingDataSRV.Get(), hzbSRV };
+    ID3D11ShaderResourceView* srvs[2] = { m_cullingDataSRV.Get(), hzbSRV };
     m_context->CSSetShaderResources(0, 2, srvs);
 
     UINT initCounts[2] = { (UINT)-1, (UINT)-1 };
-    ID3D11UnorderedAccessView* uavs[] = { m_visibleIndicesUAV.Get(), m_indirectArgsUAV.Get() };
+    ID3D11UnorderedAccessView* uavs[2] = { m_visibleIndicesUAV.Get(), m_indirectArgsUAV.Get() };
     m_context->CSSetUnorderedAccessViews(0, 2, uavs, initCounts);
 
-    UINT groups = (UINT)std::ceil(m_cpuChunkData.size() / 64.0f);
+    UINT groups = static_cast<UINT>(std::ceil(m_cpuChunkData.size() / 64.0f));
     m_cullingShader->Dispatch(groups, 1, 1);
 
-    // Очистка
-    ID3D11UnorderedAccessView* nullUAVs[] = { nullptr, nullptr };
+    // Очищаем слоты
+    ID3D11UnorderedAccessView* nullUAVs[2] = { nullptr, nullptr };
     m_context->CSSetUnorderedAccessViews(0, 2, nullUAVs, nullptr);
-    ID3D11ShaderResourceView* nullSRVs[] = { nullptr, nullptr };
+
+    ID3D11ShaderResourceView* nullSRVs[2] = { nullptr, nullptr };
     m_context->CSSetShaderResources(0, 2, nullSRVs);
+
     m_cullingShader->Unbind();
 }
 
 void TerrainGpuScene::CreateGrid() {
+    const auto& tLod = EngineConfig::Get().GetActiveProfile().TerrainLod;
+
     const int width = 37;
     const int depth = 37;
-    const float spacing = 100.0f / 36.0f; // Ровно 100 метров на чанк
+    const float spacing = 100.0f / 36.0f; // 100 метров на 36 сегментов
     float widthOffset = 50.0f;
     float depthOffset = 50.0f;
 
     std::vector<SimpleVertex> vertices(width * depth);
     std::vector<uint32_t> indices;
 
-    // Генерируем ПЛОСКУЮ сетку (Y всегда 0)
     for (int z = 0; z < depth; ++z) {
         for (int x = 0; x < width; ++x) {
             SimpleVertex& v = vertices[z * width + x];
             v.Pos = DirectX::XMFLOAT3(x * spacing - widthOffset, 0.0f, z * spacing - depthOffset);
             v.Tex = DirectX::XMFLOAT2((float)x / (width - 1), (float)z / (depth - 1));
-            v.Normal = DirectX::XMFLOAT3(0, 1, 0);
-            v.Color = DirectX::XMFLOAT3(1, 1, 1);
+            v.Normal = DirectX::XMFLOAT3(0.0f, 1.0f, 0.0f);
+            v.Color = DirectX::XMFLOAT3(1.0f, 1.0f, 1.0f);
+            v.Tangent = DirectX::XMFLOAT4(1.0f, 0.0f, 0.0f, 1.0f);
         }
     }
 
-    for (int z = 0; z < depth - 1; ++z) {
-        for (int x = 0; x < width - 1; ++x) {
-            uint32_t bl = z * width + x;
-            uint32_t br = z * width + (x + 1);
-            uint32_t tl = (z + 1) * width + x;
-            uint32_t tr = (z + 1) * width + (x + 1);
-            indices.push_back(bl); indices.push_back(tl); indices.push_back(tr);
-            indices.push_back(bl); indices.push_back(tr); indices.push_back(br);
-        }
-    }
-    m_indexCount = (UINT)indices.size();
+    auto buildLOD = [&](int step, int lodLevel) {
+        UINT startIndex = static_cast<UINT>(indices.size());
 
-    D3D11_BUFFER_DESC vbd = { (UINT)(sizeof(SimpleVertex) * vertices.size()), D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER, 0, 0, 0 };
+        for (int z = 0; z < depth - 1; z += step) {
+            for (int x = 0; x < width - 1; x += step) {
+                int nextX = std::min(x + step, width - 1);
+                int nextZ = std::min(z + step, depth - 1);
+
+                uint32_t bl = z * width + x;
+                uint32_t br = z * width + nextX;
+                uint32_t tl = nextZ * width + x;
+                uint32_t tr = nextZ * width + nextX;
+
+                indices.push_back(bl); indices.push_back(tl); indices.push_back(tr);
+                indices.push_back(bl); indices.push_back(tr); indices.push_back(br);
+            }
+        }
+
+        m_lodIndexOffsets[lodLevel] = startIndex;
+        m_lodIndexCounts[lodLevel] = static_cast<UINT>(indices.size()) - startIndex;
+        };
+
+    buildLOD(tLod.Step0 > 0 ? tLod.Step0 : 1, 0);
+    buildLOD(tLod.Step1 > 0 ? tLod.Step1 : 2, 1);
+    buildLOD(tLod.Step2 > 0 ? tLod.Step2 : 4, 2);
+
+    m_indexCount = static_cast<UINT>(indices.size());
+
+    D3D11_BUFFER_DESC vbd = { static_cast<UINT>(sizeof(SimpleVertex) * vertices.size()), D3D11_USAGE_IMMUTABLE, D3D11_BIND_VERTEX_BUFFER, 0, 0, 0 };
     D3D11_SUBRESOURCE_DATA vData = { vertices.data(), 0, 0 };
     m_device->CreateBuffer(&vbd, &vData, m_vertexBuffer.ReleaseAndGetAddressOf());
 
-    D3D11_BUFFER_DESC ibd = { (UINT)(sizeof(uint32_t) * indices.size()), D3D11_USAGE_IMMUTABLE, D3D11_BIND_INDEX_BUFFER, 0, 0, 0 };
+    D3D11_BUFFER_DESC ibd = { static_cast<UINT>(sizeof(uint32_t) * indices.size()), D3D11_USAGE_IMMUTABLE, D3D11_BIND_INDEX_BUFFER, 0, 0, 0 };
     D3D11_SUBRESOURCE_DATA iData = { indices.data(), 0, 0 };
     m_device->CreateBuffer(&ibd, &iData, m_indexBuffer.ReleaseAndGetAddressOf());
 }
 
+void TerrainGpuScene::BindGeometry(ID3D11Buffer* instanceIdBuffer) {
+    ID3D11Buffer* vbs[2] = { m_vertexBuffer.Get(), instanceIdBuffer };
+    UINT strides[2] = { sizeof(SimpleVertex), sizeof(uint32_t) };
+    UINT offsets[2] = { 0, 0 };
 
-
-void TerrainGpuScene::BindGeometry() {
-    UINT stride = sizeof(SimpleVertex);
-    UINT offset = 0;
-    m_context->IASetVertexBuffers(0, 1, m_vertexBuffer.GetAddressOf(), &stride, &offset);
+    m_context->IASetVertexBuffers(0, 2, vbs, strides, offsets);
     m_context->IASetIndexBuffer(m_indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
     m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 }
 
-void TerrainGpuScene::BindResources(TerrainArrayManager* arrayMgr, ID3D11ShaderResourceView* diffuseArraySRV) {
+void TerrainGpuScene::BindResources(
+    TerrainArrayManager* arrayMgr,
+    LevelTextureManager* texManager,
+    ID3D11ShaderResourceView* diffuseArraySRV,
+    ID3D11ShaderResourceView* rvtAlbedoSRV)
+{
     if (!arrayMgr) return;
 
     ID3D11ShaderResourceView* buffers[2] = { m_chunkDataSRV.Get(), m_visibleIndicesSRV.Get() };
     m_context->VSSetShaderResources(0, 2, buffers);
     m_context->PSSetShaderResources(0, 2, buffers);
 
-    // 4 массива
-    ID3D11ShaderResourceView* arrays[4] = {
+    ID3D11ShaderResourceView* arrays[5] = {
         arrayMgr->GetHeightArray(),      // t2
         arrayMgr->GetHoleArray(),        // t3
         arrayMgr->GetIndexArray(),       // t4
-        arrayMgr->GetWeightArray()       // t5
+        arrayMgr->GetWeightArray(),      // t5
+        arrayMgr->GetNormalArray()       // t6
     };
 
-    m_context->VSSetShaderResources(2, 1, &arrays[0]);
-    m_context->PSSetShaderResources(2, 4, arrays);
-
+    m_context->VSSetShaderResources(2, 5, arrays);
+    m_context->PSSetShaderResources(2, 5, arrays);
     m_context->PSSetShaderResources(10, 1, &diffuseArraySRV);
 
-    if (m_materialSRV) {
-        m_context->PSSetShaderResources(11, 1, m_materialSRV.GetAddressOf());
+    if (texManager && texManager->GetMaterialSRV()) {
+        ID3D11ShaderResourceView* matSRV = texManager->GetMaterialSRV();
+        m_context->PSSetShaderResources(11, 1, &matSRV);
     }
+
+    if (rvtAlbedoSRV) {
+        m_context->PSSetShaderResources(7, 1, &rvtAlbedoSRV);
+    }
+}
+
+void TerrainGpuScene::BindShadowResources(int cascadeIndex, TerrainArrayManager* arrayMgr) {
+    if (!arrayMgr || cascadeIndex < 0 || cascadeIndex >= 3) return;
+
+    ID3D11ShaderResourceView* buffers[2] = { m_chunkDataSRV.Get(), m_visibleIndicesSRV.Get() };
+    m_context->VSSetShaderResources(0, 2, buffers);
+
+    ID3D11ShaderResourceView* heightArray = arrayMgr->GetHeightArray();
+    m_context->VSSetShaderResources(2, 1, &heightArray);
+
+    ID3D11ShaderResourceView* holeArray = arrayMgr->GetHoleArray();
+    m_context->PSSetShaderResources(3, 1, &holeArray);
 }

@@ -19,24 +19,40 @@
 void TerrainArrayManager::Initialize(ID3D11Device* device, ID3D11DeviceContext* context) {
     m_device = device;
     m_context = context;
+}
 
-    Logger::Info(LogCategory::System, "Initializing Terrain Texture Arrays (Max 2048 Chunks)...");
+bool TerrainArrayManager::LoadMegaArrays(const std::string& locationName) {
+    std::string cleanName = std::filesystem::path(locationName).filename().string();
+    std::wstring base = L"Cache/Terrain/" + std::wstring(cleanName.begin(), cleanName.end());
 
-    // Высоты
-    CreateTextureArray(TerrainBaker::HEIGHTMAP_SIZE, TerrainBaker::HEIGHTMAP_SIZE, DXGI_FORMAT_R32_FLOAT, m_heightArray, m_heightArraySRV);
+    // FIXME: Загрузка происходит синхронно в основном потоке.
+    // 5 огромных Texture2DArray могут весить 100-500 МБ. Это гарантированно вызовет 
+    // подвисание (hitch) при загрузке. Нужно перевести загрузку этих DDS в TaskScheduler.
+    auto loadArray = [&](const std::wstring& path, ComPtr<ID3D11Texture2D>& tex, ComPtr<ID3D11ShaderResourceView>& srv) {
+        ID3D11Resource* res = nullptr;
+        HRESULT hr = DirectX::CreateDDSTextureFromFile(m_device, path.c_str(), &res, srv.ReleaseAndGetAddressOf());
+        if (SUCCEEDED(hr) && res) {
+            res->QueryInterface(__uuidof(ID3D11Texture2D), (void**)tex.ReleaseAndGetAddressOf());
+            res->Release();
+            return true;
+        }
+        return false;
+        };
 
-    // Дыры
-    CreateTextureArray(TerrainBaker::HOLEMAP_SIZE, TerrainBaker::HOLEMAP_SIZE, DXGI_FORMAT_R8_UNORM, m_holeArray, m_holeArraySRV);
+    bool success = true;
+    success &= loadArray(base + L"_Heights.dds", m_heightArray, m_heightArraySRV);
+    success &= loadArray(base + L"_Holes.dds", m_holeArray, m_holeArraySRV);
+    success &= loadArray(base + L"_Indices.dds", m_indexArray, m_indexArraySRV);
+    success &= loadArray(base + L"_Weights.dds", m_weightArray, m_weightArraySRV);
+    success &= loadArray(base + L"_Normals.dds", m_normalArray, m_normalArraySRV);
 
-    // Индексы (UINT формат, так как храним целые числа от 0 до 255)
-    // ВАЖНО: Используем UNORM, так как Baker сохранил как R8G8B8A8_UNORM (0.0 - 1.0), 
-    // в шейдере мы просто умножим на 255 и скастуем в uint.
-    CreateTextureArray(TerrainBaker::BLENDMAP_SIZE, TerrainBaker::BLENDMAP_SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, m_indexArray, m_indexArraySRV);
-
-    // 4. Веса
-    CreateTextureArray(TerrainBaker::BLENDMAP_SIZE, TerrainBaker::BLENDMAP_SIZE, DXGI_FORMAT_R8G8B8A8_UNORM, m_weightArray, m_weightArraySRV);
-
-    Logger::Info(LogCategory::System, "Terrain Arrays created successfully.");
+    if (success) {
+        GAMMA_LOG_INFO(LogCategory::System, "Terrain Mega-Arrays loaded instantly!");
+    }
+    else {
+        GAMMA_LOG_ERROR(LogCategory::Terrain, "Failed to load Terrain Mega-Arrays from disk.");
+    }
+    return success;
 }
 
 void TerrainArrayManager::CreateTextureArray(int width, int height, DXGI_FORMAT format, ComPtr<ID3D11Texture2D>& outTex, ComPtr<ID3D11ShaderResourceView>& outSRV) {
@@ -65,47 +81,12 @@ void TerrainArrayManager::CreateTextureArray(int width, int height, DXGI_FORMAT 
     HR_CHECK_VOID(m_device->CreateShaderResourceView(outTex.Get(), &srvDesc, outSRV.GetAddressOf()), "Failed to create Array SRV");
 }
 
-int TerrainArrayManager::AllocateSlice() {
-    if (m_nextFreeSlice >= MAX_CHUNKS) {
-        Logger::Error(LogCategory::Terrain, "Terrain Array is FULL! Max 2048 chunks reached.");
-        return 0;
-    }
-    int allocated = m_nextFreeSlice;
-    m_nextFreeSlice++;
-    return allocated;
-}
-
 void TerrainArrayManager::CopyToSlice(ID3D11Texture2D* srcTex, ID3D11Texture2D* dstArray, int sliceIndex) {
     if (!srcTex || !dstArray) return;
+
     D3D11_TEXTURE2D_DESC dstDesc;
     dstArray->GetDesc(&dstDesc);
+
     UINT dstSubresource = D3D11CalcSubresource(0, sliceIndex, dstDesc.MipLevels);
     m_context->CopySubresourceRegion(dstArray, dstSubresource, 0, 0, 0, srcTex, 0, nullptr);
-}
-
-bool TerrainArrayManager::LoadChunkIntoArray(int gridX, int gridZ, int sliceIndex) {
-    if (sliceIndex < 0 || sliceIndex >= MAX_CHUNKS) return false;
-
-    auto loadAndCopy = [&](const std::wstring& path, ID3D11Texture2D* dstArray) {
-        if (!dstArray) return;
-        std::error_code ec;
-        if (!std::filesystem::exists(path, ec)) return;
-
-        ComPtr<ID3D11Resource> res;
-        HRESULT hr = DirectX::CreateDDSTextureFromFile(m_device, path.c_str(), res.GetAddressOf(), nullptr);
-
-        if (SUCCEEDED(hr) && res) {
-            ComPtr<ID3D11Texture2D> tex;
-            if (SUCCEEDED(res.As(&tex)) && tex) {
-                CopyToSlice(tex.Get(), dstArray, sliceIndex);
-            }
-        }
-        };
-
-    loadAndCopy(TerrainBaker::GetCachePath("H", gridX, gridZ), m_heightArray.Get());
-    loadAndCopy(TerrainBaker::GetCachePath("O", gridX, gridZ), m_holeArray.Get());
-    loadAndCopy(TerrainBaker::GetCachePath("I", gridX, gridZ), m_indexArray.Get());
-    loadAndCopy(TerrainBaker::GetCachePath("W", gridX, gridZ), m_weightArray.Get());
-
-    return true;
 }

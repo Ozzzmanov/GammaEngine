@@ -4,14 +4,22 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
-//
 // ================================================================================
 // Timer.h
-// Высокоточный таймер с поддержкой сглаживания дельты.
+// Высокоточный таймер на основе QueryPerformanceCounter. 
+// Выдает чистую сырую дельту (Raw Delta) с защитой от подвисаний.
 // ================================================================================
-
 #pragma once
 #include "Prerequisites.h"
+
+// Структура для профилировщика Editor
+struct FrameProfilerStats {
+    float UpdateTimeMs = 0.0f;
+    float RenderPipelineTimeMs = 0.0f;
+    float EditorTimeMs = 0.0f;
+    float PresentTimeMs = 0.0f;
+    int   FPS = 0;
+};
 
 class Timer {
 public:
@@ -21,7 +29,7 @@ public:
     float GetDeltaTime() const { return m_deltaTime; }
     float GetTotalTime() const { return m_totalTime; }
 
-    // Сброс таймера (например, после загрузки уровня)
+    /// @brief Сброс таймера (вызывать после тяжелой загрузки уровня/сцены, чтобы избежать огромной дельты)
     void Reset();
 
 private:
@@ -31,9 +39,4 @@ private:
 
     float m_deltaTime;
     float m_totalTime;
-
-    // FIX ME вырезать Сглаживание в приоритет сырой дельты.
-    static const int MAX_SAMPLE_COUNT = 50;
-    float m_deltaBuffer[MAX_SAMPLE_COUNT];
-    int m_sampleIndex = 0;
 };

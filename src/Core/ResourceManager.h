@@ -6,6 +6,8 @@
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
 // ================================================================================
 // ResourceManager.h
+// Менеджер ресурсов. Отвечает за асинхронную загрузку, кэширование и 
+// конвертацию (запекание) текстур на лету.
 // ================================================================================
 #pragma once
 #include "Prerequisites.h"
@@ -15,6 +17,10 @@
 #include <DirectXTex.h>
 #include <atomic>
 
+/**
+ * @class ResourceManager
+ * @brief Глобальный кэш и загрузчик ассетов (Singleton).
+ */
 class ResourceManager {
 public:
     static ResourceManager& Get() {
@@ -24,54 +30,46 @@ public:
 
     void Initialize(ID3D11Device* device, ID3D11DeviceContext* context);
 
-    std::shared_ptr<Texture> LoadTextureAsync(const std::string& path);
-    ID3D11ShaderResourceView* LoadTextureSync(const std::string& path);
+    /// @brief Асинхронно загружает текстуру. Возвращает заглушку (placeholder), пока файл грузится.
+    std::shared_ptr<Texture> LoadTextureAsync(const std::string& path, int targetW = 0, int targetH = 0);
 
-    // true = Загрузка в фоне (высокий FPS, но видно появление текстур)
-    // false = Загрузка сразу (фриз игры, но текстуры появляются мгновенно)
+    /// @brief Синхронно загружает текстуру, блокируя поток до завершения.
+    ID3D11ShaderResourceView* LoadTextureSync(const std::string& path, int targetW = 0, int targetH = 0);
+
     void SetAsyncMode(bool enabled) { m_isAsyncEnabled = enabled; }
     bool IsAsyncMode() const { return m_isAsyncEnabled; }
 
-    // Внутренние методы
-    ID3D11ShaderResourceView* GetOrCacheTexture(const std::string& path);
-    ID3D11ShaderResourceView* GetTextureRaw(const std::string& path);
+    bool ResolveTexturePath(const std::string& inputPath, fs::path& outPath);
+    bool LoadRawImage(const fs::path& path, DirectX::ScratchImage& outImage);
+    bool HasAlpha(const std::string& path);
+
+    ID3D11ShaderResourceView* GetOrCacheTexture(const std::string& path, int targetW = 0, int targetH = 0);
+    ID3D11ShaderResourceView* GetTextureRaw(const std::string& path, int targetW = 0, int targetH = 0);
 
 private:
     ResourceManager() = default;
     ~ResourceManager() = default;
 
     void RebuildFileCache();
-    bool ResolveTexturePath(const std::string& inputPath, fs::path& outPath);
-    bool LoadRawImage(const fs::path& path, DirectX::ScratchImage& outImage);
-
-    // Методы кэширования
     bool IsCacheValid(const fs::path& source, const fs::path& cache);
     ID3D11ShaderResourceView* LoadFromCache(const fs::path& cachePath);
-    bool ProcessAndCacheTexture(const fs::path& source, const fs::path& cache);
+    bool ProcessAndCacheTexture(const fs::path& source, const fs::path& cache, int targetW, int targetH);
 
 private:
     std::unordered_map<std::string, std::shared_ptr<Texture>> m_textureCache;
-    std::unordered_map<std::string, ComPtr<ID3D11ShaderResourceView>> m_memoryCache; // Кэш сырых SRV
+    std::unordered_map<std::string, ComPtr<ID3D11ShaderResourceView>> m_memoryCache;
     std::unordered_map<std::string, fs::path> m_fileRegistry;
-
+    std::unordered_map<std::string, bool> m_alphaCache;
 
     std::shared_mutex m_mutex;
-
     ID3D11Device* m_device = nullptr;
     ID3D11DeviceContext* m_context = nullptr;
-
     ComPtr<ID3D11ShaderResourceView> m_placeholderSRV;
 
     std::atomic<bool> m_isAsyncEnabled{ true };
-
-    // --- КОНТРОЛЬ ПАМЯТИ ---
     std::atomic<int> m_pendingUploads{ 0 };
-    // FIX ME: Уменьшено с 20 до 5 для снижения пикового потребления RAM Исправить. 
-    const int MAX_PENDING_UPLOADS = 5;
 
-    // Параметры для конвертации, все зависит от ассетов. 
-    const int TARGET_WIDTH = 1024;
-    const int TARGET_HEIGHT = 1024;
-    const DXGI_FORMAT TARGET_FORMAT = DXGI_FORMAT_BC2_UNORM;
-    const int RESIZE_FILTER = DirectX::TEX_FILTER_LINEAR; // Используем значение из DirectTex
+    // FIXME: Перенести эти параметры в EngineConfig (Optimization/Streaming)
+    const int MAX_PENDING_UPLOADS = 5;
+    const DXGI_FORMAT COMPRESSION_FORMAT = DXGI_FORMAT_BC2_UNORM;
 };

@@ -14,6 +14,7 @@ void TaskScheduler::Initialize() {
     if (m_isRunning) return;
     m_isRunning = true;
 
+    // Оставляем 1 ядро для основного потока (Main Thread), остальные отдаем под воркеры
     unsigned int numThreads = std::thread::hardware_concurrency();
     if (numThreads > 1) numThreads--;
     if (numThreads < 1) numThreads = 1;
@@ -67,7 +68,12 @@ void TaskScheduler::WorkerThreadLoop() {
         try {
             task.Work();
         }
-        catch (...) { Logger::Error(LogCategory::System, "Task Exception"); }
+        catch (const std::exception& e) {
+            Logger::Error(LogCategory::System, std::string("Task Exception: ") + e.what());
+        }
+        catch (...) {
+            Logger::Error(LogCategory::System, "Unknown Task Exception");
+        }
 
         if (task.Callback) {
             std::lock_guard<std::mutex> lock(m_mainMutex);
@@ -76,33 +82,35 @@ void TaskScheduler::WorkerThreadLoop() {
     }
 }
 
-// РЕАЛИЗАЦИЯ С ТАЙМЕРОМ
 void TaskScheduler::ProcessMainThreadCallbacks(float maxTimeSeconds) {
     auto startTime = std::chrono::high_resolution_clock::now();
-    long long maxDurationNs = (long long)(maxTimeSeconds * 1'000'000'000.0);
+    long long maxDurationNs = static_cast<long long>(maxTimeSeconds * 1'000'000'000.0f);
 
     while (true) {
         std::function<void()> callback;
         {
             std::unique_lock<std::mutex> lock(m_mainMutex);
-            if (m_mainThreadQueue.empty()) return; // Очередь пуста, выходим
+            if (m_mainThreadQueue.empty()) return;
 
             callback = std::move(m_mainThreadQueue.front());
             m_mainThreadQueue.pop();
         }
 
         if (callback) {
-            try { callback(); }
-            catch (...) { Logger::Error(LogCategory::System, "MainThread Callback Error"); }
+            try {
+                callback();
+            }
+            catch (...) {
+                Logger::Error(LogCategory::System, "MainThread Callback Error");
+            }
         }
 
-        // Проверяем время
+        // Проверяем, не вышли ли мы за лимит времени кадра
         auto currTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(currTime - startTime).count();
 
-        // Если превысили лимит времени - выходим, остальное доделаем в следующем кадре
         if (duration > maxDurationNs) {
-            break;
+            break; // Остаток доделаем в следующем кадре, чтобы не ронять FPS
         }
     }
 }

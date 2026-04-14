@@ -1,109 +1,384 @@
-cbuffer WaterConstants : register(b0) {
-    float4 DeepColor;
-    float4 ReflectionTint;
-    float4 Params1; 
-    float4 Params2;
-    float4 Scroll1;
-    float4 Scroll2;
-    float3 CamPos;
-    float Padding;
-};
+// ================================================================================
+// Water.hlsl
+// Работает ПЛОХО! В будущих обновлениях ПЕРЕПИСАТЬ!
+// Океан с поддержкой волн Герстнера, аппаратной тесселяцией, физическим 
+// поглощением света (Depth Absorption) и генерацией процедурной пены.
+// Разделен на два пути: POTATO_MODE (Vertex) и ULTRA_MODE (Hull/Domain).
+// ================================================================================
 
-cbuffer TransformBuffer : register(b1) {
+cbuffer CB_Transform : register(b0) {
     matrix World;
     matrix View;
     matrix Projection;
+    float4 TimeAndParams; // x = GameTime
 };
 
-Texture2D WaveMap : register(t0);
-TextureCube SkyMap : register(t1);
-SamplerState Sampler : register(s0);
+cbuffer CB_GlobalWeather : register(b1) {
+    float4 WindParams1;
+    float4 WindParams2;
+    float4 SunDirection;
+    float4 SunColor;
+};
+
+cbuffer CB_WaterParams : register(b2) {
+    float4 DeepColor;
+    float4 ShallowColor;
+    float4 FoamColor;
+    float4 Waves[4];          // Параметры волн: XY = Direction, Z = Steepness, W = Wavelength
+    float3 CamPos;
+    float  Time;
+    float  TessellationFactor;
+    float  TessellationMaxDist;
+    float  DepthAbsorptionScale;
+    float  GlobalWaveScale;
+    int    QualityLevel;
+    int    EnableRefraction;
+    float2 ZBufferParams;     // X = NearZ, Y = FarZ
+};
+
+// --------------------------------------------------------------------------------
+// РЕСУРСЫ
+// --------------------------------------------------------------------------------
+Texture2D   NormalMap     : register(t0);
+Texture2D   FoamMap       : register(t1);
+TextureCube EnvMap        : register(t2); // Skybox для отражений
+Texture2D   DepthMap      : register(t3); // Z-Buffer непрозрачной геометрии
+Texture2D   RefractionMap : register(t4); // HDR-текстура сцены до рендера воды
+
+SamplerState SamplerWrap  : register(s0);
+SamplerState SamplerClamp : register(s1);
 
 struct VS_IN {
     float3 Pos : POSITION;
-    float4 Color : COLOR;
-    float2 UV : TEXCOORD0;
+    float2 UV  : TEXCOORD;
 };
 
 struct PS_IN {
-    float4 Pos : SV_POSITION;
-    float3 WorldPos : TEXCOORD0;
-    float4 Color : COLOR;
-    float2 UV : TEXCOORD1;
+    float4 ScreenPos        : SV_Position;
+    float4 ClipPos          : TEXCOORD0;
+    float3 WorldPos         : TEXCOORD1;
+    float3 Normal           : TEXCOORD2;
+    float3 Tangent          : TEXCOORD3;
+    float3 BiTangent        : TEXCOORD4;
+    float2 UV               : TEXCOORD5;
+    float  WaveDisplacement : TEXCOORD6; // Высота волны: 0.0 (впадина) .. 1.0 (гребень)
 };
 
+// --------------------------------------------------------------------------------
+// МАТЕМАТИКА ВОДЫ
+// --------------------------------------------------------------------------------
+
+// Линеаризация значения глубины из аппаратного Z-Buffer
+float LinearizeDepth(float d) {
+    float n = ZBufferParams.x;
+    float f = ZBufferParams.y;
+    return (n * f) / max((f - d * (f - n)), 0.00001f);
+}
+
+// Вычисление смещения вершины и касательного пространства по алгоритму Герстнера
+void GerstnerWave(
+    float4 wave, float3 pos, float time, float scale,
+    inout float3 displacement, inout float3 tangent, inout float3 binormal)
+{
+    float2 dir        = normalize(wave.xy);
+    float  steepness  = wave.z;
+    float  wavelength = wave.w / max(scale, 0.01f);
+    
+    float  k          = 6.28318f / wavelength; // Волновое число
+    float  c          = sqrt(2.5f / k);        // Фазовая скорость
+    float  f          = k * (dot(dir, pos.xz) - c * time);
+    float  a          = steepness / k;         // Амплитуда
+
+    displacement.x += dir.x * a * cos(f);
+    displacement.y += a * sin(f);
+    displacement.z += dir.y * a * cos(f);
+
+    tangent += float3(
+         1.0f - dir.x * dir.x * steepness * sin(f),
+         dir.x * steepness * cos(f),
+        -dir.x * dir.y * steepness * sin(f)
+    );
+        
+    binormal += float3(
+        -dir.x * dir.y * steepness * sin(f),
+         dir.y * steepness * cos(f),
+         1.0f - dir.y * dir.y * steepness * sin(f)
+    );
+}
+
+// ================================================================================
+// ВЕРШИННЫЙ И ТЕССЕЛЯЦИОННЫЙ ЭТАПЫ
+// ================================================================================
+
+#ifdef POTATO_MODE
+
+// Упрощенный путь для низких настроек графики (расчет волн в Vertex Shader)
 PS_IN VSMain(VS_IN input) {
+    float3 pos = input.Pos;
+    float3 displacement = float3(0, 0, 0);
+    float3 tangent      = float3(1, 0, 0);
+    float3 binormal     = float3(0, 0, 1);
+
+    float t = Time * 0.35f;
+    float3 pos0 = pos;
+    float3 pos1 = pos + float3( 7.3f, 0.0f, 13.7f);
+    float3 pos2 = pos + float3(-11.1f, 0.0f,  5.9f);
+    float3 pos3 = pos + float3( 3.7f, 0.0f, -17.3f);
+
+    if (QualityLevel >= 1) GerstnerWave(Waves[0], pos0, t * 1.00f, GlobalWaveScale, displacement, tangent, binormal);
+    if (QualityLevel >= 2) GerstnerWave(Waves[1], pos1, t * 0.73f, GlobalWaveScale, displacement, tangent, binormal);
+    if (QualityLevel >= 3) GerstnerWave(Waves[2], pos2, t * 1.31f, GlobalWaveScale, displacement, tangent, binormal);
+    if (QualityLevel >= 4) GerstnerWave(Waves[3], pos3, t * 0.57f, GlobalWaveScale, displacement, tangent, binormal);
+
+    float waveDisplacement = saturate((displacement.y + 2.0f) / 4.0f);
+    pos += displacement;
+
+    float3 N = normalize(cross(tangent, binormal));
+    float3 T = normalize(tangent - dot(tangent, N) * N);
+    float3 B = cross(N, T);
+
     PS_IN output;
-    float4 worldPos = mul(float4(input.Pos, 1.0), World);
-    output.WorldPos = worldPos.xyz;
-    output.Pos = mul(mul(worldPos, View), Projection);
-    output.UV = input.UV;
-    output.Color = input.Color;
+    output.WorldPos         = pos;
+    output.Normal           = N;
+    output.Tangent          = T;
+    output.BiTangent        = B;
+    output.UV               = input.UV;
+    output.WaveDisplacement = waveDisplacement;
+
+    float4 clipPos   = mul(mul(float4(pos, 1.0f), View), Projection);
+    output.ScreenPos = clipPos;
+    output.ClipPos   = clipPos;
     return output;
 }
 
-float4 PSMain(PS_IN input) : SV_Target {
-    float3 sunDir = normalize(float3(0.0, 0.08, 1.0)); 
-    float3 sunColor = float3(1.0, 0.4, 0.1);           
+#else 
 
-    float3 toCam = normalize(CamPos - input.WorldPos);
-    float time = Params1.w;
+// Путь с аппаратной тесселяцией (Hull & Domain Shaders)
+struct HS_OUT {
+    float3 Pos : POSITION;
+    float2 UV  : TEXCOORD;
+};
 
-    float2 scale = Params2.zw; 
-    float2 uv1 = input.UV * scale + Scroll1.xy * time * Params2.x; 
-    float2 uv2 = input.UV * scale * 0.5 + Scroll2.xy * time * Params2.x;
+struct HS_CONST_OUT {
+    float EdgeTess[4]   : SV_TessFactor;
+    float InsideTess[2] : SV_InsideTessFactor;
+};
+
+HS_OUT VSMain(VS_IN input) {
+    HS_OUT output;
+    output.Pos = input.Pos;
+    output.UV  = input.UV;
+    return output;
+}
+
+HS_CONST_OUT HSConst(InputPatch<HS_OUT, 4> patch, uint patchID : SV_PrimitiveID) {
+    HS_CONST_OUT output;
+    float3 center = (patch[0].Pos + patch[1].Pos + patch[2].Pos + patch[3].Pos) * 0.25f;
     
-    float3 n1 = WaveMap.Sample(Sampler, uv1).rgb * 2.0 - 1.0;
-    float3 n2 = WaveMap.Sample(Sampler, uv2).rgb * 2.0 - 1.0;
-    float3 combinedN = n1 + n2;
+    // Дистанционный LOD тесселяции
+    float  dist   = distance(CamPos, center);
+    float  t      = 1.0f - saturate(dist / max(TessellationMaxDist, 1.0f));
+    float  tess   = max(1.0f, TessellationFactor * t);
 
-    float3 normal = normalize(float3(combinedN.x, 0.5, combinedN.y)); 
+    output.EdgeTess[0]   = tess;
+    output.EdgeTess[1]   = tess;
+    output.EdgeTess[2]   = tess;
+    output.EdgeTess[3]   = tess;
+    output.InsideTess[0] = tess;
+    output.InsideTess[1] = tess;
+    return output;
+}
 
-    float3 H = normalize(sunDir + toCam);
-    float NdotH_Glow = saturate(dot(normal, H));
+[domain("quad")]
+[partitioning("fractional_even")]
+[outputtopology("triangle_ccw")]
+[outputcontrolpoints(4)]
+[patchconstantfunc("HSConst")]
+HS_OUT HSMain(InputPatch<HS_OUT, 4> patch, uint i : SV_OutputControlPointID) {
+    return patch[i];
+}
+
+[domain("quad")]
+PS_IN DSMain(
+    HS_CONST_OUT hsConst,
+    float2 uv : SV_DomainLocation,
+    const OutputPatch<HS_OUT, 4> patch)
+{
+    float3 pos   = lerp(lerp(patch[0].Pos, patch[1].Pos, uv.x),
+                        lerp(patch[2].Pos, patch[3].Pos, uv.x), uv.y);
+    float2 texUV = lerp(lerp(patch[0].UV,  patch[1].UV,  uv.x),
+                        lerp(patch[2].UV,  patch[3].UV,  uv.x), uv.y);
+
+    float3 displacement = float3(0, 0, 0);
+    float3 tangent      = float3(1, 0, 0);
+    float3 binormal     = float3(0, 0, 1);
+
+    float t = Time * 0.35f;
+    float3 pos0 = pos;
+    float3 pos1 = pos + float3( 7.3f, 0.0f, 13.7f);
+    float3 pos2 = pos + float3(-11.1f, 0.0f,  5.9f);
+    float3 pos3 = pos + float3( 3.7f, 0.0f, -17.3f);
+
+    // Применение волн Герстнера к сгенерированной геометрии
+    if (QualityLevel >= 1) GerstnerWave(Waves[0], pos0, t * 1.00f, GlobalWaveScale, displacement, tangent, binormal);
+    if (QualityLevel >= 2) GerstnerWave(Waves[1], pos1, t * 0.73f, GlobalWaveScale, displacement, tangent, binormal);
+    if (QualityLevel >= 3) GerstnerWave(Waves[2], pos2, t * 1.31f, GlobalWaveScale, displacement, tangent, binormal);
+    if (QualityLevel >= 4) GerstnerWave(Waves[3], pos3, t * 0.57f, GlobalWaveScale, displacement, tangent, binormal);
+
+    float waveDisplacement = saturate((displacement.y + 2.0f) / 4.0f);
+    pos += displacement;
+
+    // Восстановление ортогонального базиса
+    float3 N = normalize(cross(tangent, binormal));
+    float3 T = normalize(tangent - dot(tangent, N) * N);
+    float3 B = cross(N, T);
+
+    PS_IN output;
+    output.WorldPos         = pos;
+    output.Normal           = N;
+    output.Tangent          = T;
+    output.BiTangent        = B;
+    output.UV               = texUV;
+    output.WaveDisplacement = waveDisplacement;
+
+    float4 clipPos   = mul(mul(float4(pos, 1.0f), View), Projection);
+    output.ScreenPos = clipPos;
+    output.ClipPos   = clipPos;
+    return output;
+}
+#endif // POTATO_MODE
+
+// ================================================================================
+// ПИКСЕЛЬНЫЙ ЭТАП (Shading & Optical Effects)
+// ================================================================================
+
+float4 PSMain(PS_IN input) : SV_Target
+{
+    // --- 1. ЭКРАННЫЕ КООРДИНАТЫ И ГЛУБИНА ---
+    float2 ndcXY    = input.ClipPos.xy / input.ClipPos.w;
+    float2 screenUV = ndcXY * float2(0.5f, -0.5f) + 0.5f;
+
+    float rawDepth    = DepthMap.SampleLevel(SamplerClamp, screenUV, 0).r;
+    float sceneDepthM = LinearizeDepth(rawDepth);
     
-    float glowFactor = pow(NdotH_Glow, 4.0); 
+    float waterNDZ    = input.ClipPos.z / input.ClipPos.w;
+    float waterDepthM = LinearizeDepth(waterNDZ);
     
-    float3 glowLight = sunColor * glowFactor * 0.6; 
+    float thickness   = max(sceneDepthM - waterDepthM, 0.0f);
+    float depthBlend  = smoothstep(0.0f, 15.0f, thickness);
 
-    float3 waterBody = (DeepColor.rgb * 0.8) + float3(0.01, 0.02, 0.05);
+    // --- 2. НОРМАЛИ И КАСАТЕЛЬНОЕ ПРОСТРАНСТВО ---
+    // Смешивание двух слоев карт нормалей для эффекта мелкой ряби
+    float2 uv1 = input.UV * 18.0f - float2( Time * 0.005f,  Time * 0.005f);
+    float2 uv2 = input.UV * 32.0f - float2( Time * 0.006f, -Time * 0.011f);
+
+    float3 n1 = NormalMap.Sample(SamplerWrap, uv1).rgb * 2.0f - 1.0f;
+    float3 n2 = NormalMap.Sample(SamplerWrap, uv2).rgb * 2.0f - 1.0f;
+    n1.xy *= 1.5f; 
+    n2.xy *= 1.5f;
+    float3 normalTS = normalize(n1 + n2 * 0.5f);
+
+    // Ортогонализация Грама-Шмидта (восстановление базиса после интерполяции)
+    float3 N_geom = normalize(input.Normal);
+    float3 T_geom = normalize(input.Tangent);
+    T_geom = normalize(T_geom - dot(T_geom, N_geom) * N_geom);
+    float3 B_geom = cross(N_geom, T_geom);
     
-    waterBody += glowLight; 
+    float3x3 TBN = float3x3(T_geom, B_geom, N_geom);
+    float3 N = normalize(mul(TBN, normalTS));
 
-    float NdotV = saturate(dot(toCam, normal)); 
-    float fresnel = Params1.x + (1.0 - Params1.x) * pow(1.0 - NdotV, Params1.y);
-    fresnel *= 0.5;
+    // --- 3. БАЗОВЫЕ ВЕКТОРЫ ---
+    float3 V      = normalize(CamPos - input.WorldPos);
+    float  NdotV  = saturate(dot(N, V));
+    float3 sunDir = normalize(SunDirection.xyz);
+    float  NdotL  = saturate(dot(N, sunDir));
+    float  crest  = input.WaveDisplacement; 
+    float3 sColor = SunColor.rgb * SunColor.w;
 
-    float3 reflectDir = reflect(-toCam, normal);
-    float3 reflection = SkyMap.Sample(Sampler, reflectDir).rgb * ReflectionTint.rgb * Params1.z;
+    float shoreFade = saturate(thickness * 0.3f);
+    float fresnel   = lerp(0.02f, 1.0f, pow(1.0f - NdotV, 5.0f)) * shoreFade;
 
-    float roadWidth = 0.5;
+    float3 finalColor = float3(0, 0, 0);
+    float  finalAlpha = 1.0f;
+
+    // --- 4. ФИЗИЧЕСКОЕ ПОГЛОЩЕНИЕ (Depth Absorption & Refraction) ---
+    if (EnableRefraction == 1) {
+        float2 distOffset = normalTS.xy * 0.03f * saturate(thickness * 0.2f);
+        float2 refUV = saturate(screenUV + distOffset);
+
+        // Предотвращение сэмплирования объектов перед поверхностью воды
+        float refRawDepth = DepthMap.SampleLevel(SamplerClamp, refUV, 0).r;
+        float refDepthM   = LinearizeDepth(refRawDepth);
+        if (refDepthM < waterDepthM) { 
+            refUV = screenUV; 
+        }
+
+        float3 bottomColor = RefractionMap.SampleLevel(SamplerClamp, refUV, 0).rgb;
+
+        // Закон Бера-Ламберта: экспоненциальное поглощение света
+        float3 extinction = float3(1.0f, 0.9f, 0.3f);
+        float3 absorption = exp(-extinction * thickness * max(DepthAbsorptionScale, 0.5f));
+        float3 underwaterColor = bottomColor * absorption;
+        
+        float visibility = exp(-thickness * DepthAbsorptionScale * 1.0f);
+        finalColor = lerp(DeepColor.rgb, underwaterColor, visibility);
+        finalColor += ShallowColor.rgb * crest * 0.03f; 
+        
+        finalAlpha = 1.0f; // Поверхность непрозрачна, так как дно уже отрендерено внутри finalColor
+    } 
+    else {
+        // Fallback: Альфа-блендинг без преломлений
+        float3 waterVolume = lerp(ShallowColor.rgb, DeepColor.rgb, saturate(thickness * 0.2f));
+        finalColor = waterVolume + (ShallowColor.rgb * crest * 0.03f);
+        finalAlpha = saturate(thickness * 0.15f + fresnel);
+    }
+
+    // --- 5. ПРОЦЕДУРНАЯ ПЕНА (Foam Generation) ---
+    float whitecap = pow(saturate(crest * 1.5f - 0.75f), 8.0f); 
+    float shoreFoam = smoothstep(3.0f, 0.1f, thickness);
     
-    float roadLengthShortener = 55.0; 
-
-    float3 sunNormal = combinedN;
-    sunNormal.x *= roadWidth;           
-    sunNormal.y *= roadLengthShortener; 
-    sunNormal = normalize(float3(sunNormal.x, 3.0, sunNormal.y));
-
-    float NdotH_Spec = saturate(dot(sunNormal, H));
-    float sharpPower = Params2.y;
-    float specular = pow(NdotH_Spec, sharpPower);
-
-    float distanceMask = smoothstep(0.45, 0.3, NdotV);
+    float waveTide = smoothstep(0.2f, 0.8f, crest);
+    shoreFoam *= lerp(0.15f, 1.0f, waveTide); 
     
-    specular *= distanceMask;
+    float totalFoamMask = saturate(whitecap + shoreFoam);
 
-    float3 sunSpecular = sunColor * specular * 0.1;
+    // Смещение текстурных координат пены вдоль направления волны
+    float2 foamUV = input.UV * 3.0f + (N_geom.xz * 0.5f) + (normalTS.xy * 0.2f);
+    foamUV += float2(Time * 0.015f, Time * 0.01f); 
+    
+    float foamTex = FoamMap.Sample(SamplerWrap, foamUV).r;
+    foamTex = smoothstep(0.4f, 0.8f, foamTex);
+    
+    float3 brightAmbient = float3(0.5f, 0.5f, 0.6f); 
+    float3 directSunLine = sColor * 1.5f; 
+    float3 litFoamColor = FoamColor.rgb * (brightAmbient + directSunLine * NdotL);
+    litFoamColor *= 3.0f; // Переход в HDR-диапазон
+    
+    finalColor = lerp(finalColor, litFoamColor, totalFoamMask * foamTex);
+    
+    if (EnableRefraction == 0) {
+        finalAlpha = saturate(finalAlpha + (totalFoamMask * foamTex * 2.0f));
+    }
 
-    float3 finalColor = lerp(waterBody, reflection, fresnel);
-    finalColor += sunSpecular;
+    // --- 6. БЛИКИ И ПОДПОВЕРХНОСТНОЕ РАССЕИВАНИЕ (Specular & SSS) ---
+    float3 H      = normalize(V + sunDir);
+    float  NdotH  = max(dot(N, H), 0.0f);
 
-    float minAlpha = 0.2; 
-    float mask = input.Color.a;
-    float baseAlpha = max(mask, minAlpha); 
+    float specSoft = pow(NdotH, 128.0f);
+    finalColor += sColor * specSoft * 0.1f * shoreFade;
 
-    float alpha = saturate((DeepColor.a * baseAlpha) + fresnel + specular + (glowFactor * 0.3));
+    float specHard = pow(NdotH, 2048.0f);
+    finalColor += sColor * specHard * 1.0f * saturate(crest * 1.5f) * shoreFade;
 
-    return float4(finalColor, alpha);
+    // SSS (Имитация просвечивания света сквозь толщу волны)
+    float3 H_sss = normalize(V + sunDir);
+    float sssIntensity = max(0.0f, dot(V, -sunDir)) * max(0.0f, dot(N, -H_sss));
+    finalColor += ShallowColor.rgb * sColor * pow(sssIntensity, 4.0f) * crest * 0.05f;
+
+    // --- 7. ОТРАЖЕНИЯ (Environment Mapping) ---
+    float3 R = reflect(-V, N);
+    float3 envColor = EnvMap.SampleLevel(SamplerWrap, R, 2.0f).rgb;
+    finalColor = lerp(finalColor, envColor, fresnel * 0.85f);
+
+    return float4(finalColor, finalAlpha);
 }

@@ -4,6 +4,7 @@
 //  ██║   ██║██╔══██║██║╚██╔╝██║██║╚██╔╝██║██╔══██║
 //  ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║ ╚═╝ ██║██║  ██║
 //   ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝
+//
 // ================================================================================
 // ShaderManager.h
 // ================================================================================
@@ -24,17 +25,14 @@ public:
     // Главная функция возвращает скомпилированный PS с заданными макросами
     ID3D11PixelShader* GetPixelShader(const std::string& path, const std::vector<std::string>& defines);
 
-    // Стандартный VS (он у нас один для всех)
+    // Стандартный VS
     ID3D11VertexShader* GetVertexShader(const std::string& path, ID3DBlob** outBlob = nullptr);
-
-
 
 private:
     ID3D11Device* m_device = nullptr;
 
-
     // Кэш: "Path|DEF1|DEF2" -> Pointer
-    std::map<std::string, ComPtr<ID3D11PixelShader>> m_psCache;
+    std::map<std::string, ComPtr<ID3D11PixelShader>>  m_psCache;
     std::map<std::string, ComPtr<ID3D11VertexShader>> m_vsCache;
-    std::map<std::string, ComPtr<ID3DBlob>> m_vsBlobCache; 
+    std::map<std::string, ComPtr<ID3DBlob>>           m_vsBlobCache;
 };

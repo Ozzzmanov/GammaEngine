@@ -8,6 +8,12 @@
 // Window.cpp
 // ================================================================================
 #include "Window.h"
+#include "InputSystem.h"
+
+#ifdef GAMMA_EDITOR
+// FIXME Просто extern, так как ImGui компилирует этот хендлер как C++ функцию! А правильно ли это работает?
+extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#endif
 
 Window::Window() {}
 
@@ -19,13 +25,21 @@ Window::~Window() {
 }
 
 LRESULT CALLBACK Window::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    if (uMsg == WM_MOUSEWHEEL) {
+        InputSystem::AddScroll((short)HIWORD(wParam) / (float)WHEEL_DELTA);
+    }
+
+#ifdef GAMMA_EDITOR
+    // Отдаем события в редактор
+    if (ImGui_ImplWin32_WndProcHandler(hwnd, uMsg, wParam, lParam))
+        return true;
+#endif
+
     switch (uMsg) {
     case WM_DESTROY:
     case WM_CLOSE:
         PostQuitMessage(0);
         return 0;
-
-        // Здесь можно добавить обработку изменения размера окна (WM_SIZE)
 
     default:
         return DefWindowProc(hwnd, uMsg, wParam, lParam);

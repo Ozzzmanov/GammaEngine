@@ -7,7 +7,6 @@
 // ================================================================================
 // ResourceManager.cpp
 // ================================================================================
-
 #include "ResourceManager.h"
 #include "Logger.h"
 #include "TaskScheduler.h"
@@ -19,11 +18,7 @@
 #include <thread>
 #include <sstream>
 
-#ifdef _DEBUG
 #pragma comment(lib, "DirectXTex.lib")
-#else
-#pragma comment(lib, "DirectXTex.lib")
-#endif
 
 namespace fs = std::filesystem;
 
@@ -41,21 +36,24 @@ void ResourceManager::Initialize(ID3D11Device* device, ID3D11DeviceContext* cont
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     (void)hr;
 
+    // FIXME: Хардкод папки Cache. Вынести в настройки проекта/движка.
     if (!fs::exists("Cache")) {
         fs::create_directory("Cache");
         Logger::Info(LogCategory::System, "ResourceManager: Created Cache directory.");
     }
 
-    uint32_t placeholderColor = 0xFF00FFFF;
+    // Создаем пурпурную текстуру-заглушку (Fallback Texture)
+    uint32_t placeholderColor = 0xFFFF00FF; // ABGR (Alpha, Blue, Green, Red) -> Magenta
     D3D11_TEXTURE2D_DESC desc = {};
     desc.Width = 1; desc.Height = 1; desc.MipLevels = 1; desc.ArraySize = 1;
     desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     desc.SampleDesc.Count = 1; desc.Usage = D3D11_USAGE_IMMUTABLE;
     desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
     D3D11_SUBRESOURCE_DATA initData = { &placeholderColor, 4, 0 };
     ComPtr<ID3D11Texture2D> tex;
-    device->CreateTexture2D(&desc, &initData, tex.GetAddressOf());
-    device->CreateShaderResourceView(tex.Get(), nullptr, m_placeholderSRV.GetAddressOf());
+    m_device->CreateTexture2D(&desc, &initData, tex.GetAddressOf());
+    m_device->CreateShaderResourceView(tex.Get(), nullptr, m_placeholderSRV.GetAddressOf());
 
     RebuildFileCache();
 }
@@ -64,6 +62,7 @@ void ResourceManager::RebuildFileCache() {
     Logger::Info(LogCategory::System, "Building File Registry...");
     m_fileRegistry.clear();
 
+    // FIXME: Хардкод папки Assets.
     if (fs::exists("Assets")) {
         try {
             for (const auto& entry : fs::recursive_directory_iterator("Assets")) {
@@ -79,14 +78,12 @@ void ResourceManager::RebuildFileCache() {
     Logger::Info(LogCategory::System, "File Registry: " + std::to_string(m_fileRegistry.size()) + " files.");
 }
 
-std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& rawPath) {
+std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& rawPath, int targetW, int targetH) {
     fs::path sourcePath;
     std::string cacheKey;
 
-    // ЧТЕНИЕ (Много потоков одновременно ---
     {
         std::shared_lock<std::shared_mutex> sharedLock(m_mutex);
-
         if (!ResolveTexturePath(rawPath, sourcePath)) {
             auto dummy = std::make_shared<Texture>(rawPath);
             dummy->SetSRV(m_placeholderSRV.Get());
@@ -94,23 +91,16 @@ std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& ra
             return dummy;
         }
 
-        cacheKey = sourcePath.string();
+        std::string suffix = (targetW > 0 && targetH > 0) ? "_" + std::to_string(targetW) + "x" + std::to_string(targetH) : "";
+        cacheKey = sourcePath.string() + suffix;
 
-        if (m_textureCache.find(cacheKey) != m_textureCache.end()) {
-            return m_textureCache[cacheKey];
-        }
+        if (m_textureCache.find(cacheKey) != m_textureCache.end()) return m_textureCache[cacheKey];
     }
 
-    // ЗАПИСЬ (Double-Checked Locking) ---
     {
         std::unique_lock<std::shared_mutex> uniqueLock(m_mutex);
+        if (m_textureCache.find(cacheKey) != m_textureCache.end()) return m_textureCache[cacheKey];
 
-        // Проверяем еще раз: вдруг другой поток уже добавил текстуру, пока мы ждали unique_lock
-        if (m_textureCache.find(cacheKey) != m_textureCache.end()) {
-            return m_textureCache[cacheKey];
-        }
-
-        // Если текстура была загружена синхронно (например, террейном)
         if (m_memoryCache.find(cacheKey) != m_memoryCache.end()) {
             auto reusedTexture = std::make_shared<Texture>(rawPath);
             reusedTexture->SetSRV(m_memoryCache[cacheKey].Get());
@@ -119,7 +109,6 @@ std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& ra
             return reusedTexture;
         }
 
-        // Создаем новую заглушку и СРАЗУ кладем в кэш
         auto newTexture = std::make_shared<Texture>(rawPath);
         newTexture->SetSRV(m_placeholderSRV.Get());
         newTexture->SetLoaded(false);
@@ -128,32 +117,27 @@ std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& ra
 
     auto newTexture = m_textureCache[cacheKey];
 
-    // Формируем путь к кэшу
-    std::string flatName = SanitizeCacheName(cacheKey);
+    std::string suffix = (targetW > 0 && targetH > 0) ? "_" + std::to_string(targetW) + "x" + std::to_string(targetH) : "";
+    std::string flatName = SanitizeCacheName(sourcePath.string()) + suffix;
     size_t lastDot = flatName.find_last_of('.');
     if (lastDot != std::string::npos) flatName = flatName.substr(0, lastDot);
-    fs::path cachePath = fs::path("Cache") / (flatName + "_bc3.dds");
+    fs::path cachePath = fs::path("Cache") / (flatName + "_bc2.dds");
 
     if (m_isAsyncEnabled) {
         TaskScheduler::Get().Submit(
-            // ФОНОВЫЙ ПОТОК
-            [this, sourcePath, cachePath]() {
+            [this, sourcePath, cachePath, targetW, targetH]() {
                 CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
-                while (m_pendingUploads >= MAX_PENDING_UPLOADS) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                }
+                // FIXME: Активное ожидание (Spinlock/Busy-Wait). Возможно заменить на std::counting_semaphore в C++20.
+                while (m_pendingUploads >= MAX_PENDING_UPLOADS) std::this_thread::sleep_for(std::chrono::milliseconds(5));
                 m_pendingUploads++;
 
                 if (!IsCacheValid(sourcePath, cachePath)) {
                     Logger::Info(LogCategory::Texture, "Baking cache: " + sourcePath.filename().string());
-                    if (!ProcessAndCacheTexture(sourcePath, cachePath)) {
-                        Logger::Error(LogCategory::Texture, "Baking failed: " + sourcePath.string());
-                    }
+                    ProcessAndCacheTexture(sourcePath, cachePath, targetW, targetH);
                 }
                 m_pendingUploads--;
             },
-            // ГЛАВНЫЙ ПОТОК (Callback)
             [this, sourcePath, cachePath, cacheKey, newTexture]() {
                 ComPtr<ID3D11ShaderResourceView> srv;
                 ID3D11Resource* res = nullptr;
@@ -168,11 +152,8 @@ std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& ra
 
                 if (SUCCEEDED(hr)) {
                     SAFE_RELEASE(res);
-
                     newTexture->SetSRV(srv.Get());
                     newTexture->SetLoaded(true);
-
-                    // Синхронизируем сырой кэш под эксклюзивной блокировкой
                     std::unique_lock<std::shared_mutex> lock(m_mutex);
                     m_memoryCache[cacheKey] = srv;
                 }
@@ -180,11 +161,7 @@ std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& ra
         );
     }
     else {
-        // СИНХРОННЫЙ РЕЖИМ (Без блокировок на время запекания!)
-        if (!IsCacheValid(sourcePath, cachePath)) {
-            Logger::Info(LogCategory::Texture, "Baking cache (SYNC): " + sourcePath.filename().string());
-            ProcessAndCacheTexture(sourcePath, cachePath);
-        }
+        if (!IsCacheValid(sourcePath, cachePath)) ProcessAndCacheTexture(sourcePath, cachePath, targetW, targetH);
 
         ComPtr<ID3D11ShaderResourceView> srv;
         ID3D11Resource* res = nullptr;
@@ -192,47 +169,45 @@ std::shared_ptr<Texture> ResourceManager::LoadTextureAsync(const std::string& ra
             SAFE_RELEASE(res);
             newTexture->SetSRV(srv.Get());
             newTexture->SetLoaded(true);
-
             std::unique_lock<std::shared_mutex> lock(m_mutex);
             m_memoryCache[cacheKey] = srv;
         }
     }
-
     return newTexture;
 }
 
-ID3D11ShaderResourceView* ResourceManager::LoadTextureSync(const std::string& rawPath) {
-    return GetTextureRaw(rawPath);
+ID3D11ShaderResourceView* ResourceManager::LoadTextureSync(const std::string& rawPath, int targetW, int targetH) {
+    return GetOrCacheTexture(rawPath, targetW, targetH);
 }
 
-ID3D11ShaderResourceView* ResourceManager::GetOrCacheTexture(const std::string& originalPath) {
+ID3D11ShaderResourceView* ResourceManager::GetOrCacheTexture(const std::string& originalPath, int targetW, int targetH) {
     fs::path sourcePath;
     std::string cacheKey;
 
-    // --- ЧТЕНИЕ ---
     {
         std::shared_lock<std::shared_mutex> sharedLock(m_mutex);
         if (!ResolveTexturePath(originalPath, sourcePath)) return nullptr;
 
-        cacheKey = sourcePath.string();
+        std::string suffix = (targetW > 0 && targetH > 0) ? "_" + std::to_string(targetW) + "x" + std::to_string(targetH) : "";
+        cacheKey = sourcePath.string() + suffix;
+
         if (m_memoryCache.find(cacheKey) != m_memoryCache.end()) {
             return m_memoryCache[cacheKey].Get();
         }
     }
 
-    // --- КОНВЕРТАЦИЯ (Параллельно для разных текстур) ---
-    std::string flatName = SanitizeCacheName(cacheKey);
+    std::string suffix = (targetW > 0 && targetH > 0) ? "_" + std::to_string(targetW) + "x" + std::to_string(targetH) : "";
+    std::string flatName = SanitizeCacheName(sourcePath.string()) + suffix;
     size_t lastDot = flatName.find_last_of('.');
     if (lastDot != std::string::npos) flatName = flatName.substr(0, lastDot);
-    fs::path cachePath = fs::path("Cache") / (flatName + "_bc3.dds");
+    fs::path cachePath = fs::path("Cache") / (flatName + "_bc2.dds");
 
     if (!IsCacheValid(sourcePath, cachePath)) {
-        if (!ProcessAndCacheTexture(sourcePath, cachePath)) {
+        if (!ProcessAndCacheTexture(sourcePath, cachePath, targetW, targetH)) {
             return nullptr;
         }
     }
 
-    // --- ЗАПИСЬ ---
     auto srv = LoadFromCache(cachePath);
     if (srv) {
         std::unique_lock<std::shared_mutex> uniqueLock(m_mutex);
@@ -240,7 +215,6 @@ ID3D11ShaderResourceView* ResourceManager::GetOrCacheTexture(const std::string& 
             m_memoryCache[cacheKey] = srv;
         }
         else {
-            // Другой поток уже загрузил эту текстуру!
             srv->Release();
             srv = m_memoryCache[cacheKey].Get();
         }
@@ -249,8 +223,8 @@ ID3D11ShaderResourceView* ResourceManager::GetOrCacheTexture(const std::string& 
     return srv;
 }
 
-ID3D11ShaderResourceView* ResourceManager::GetTextureRaw(const std::string& originalPath) {
-    return GetOrCacheTexture(originalPath);
+ID3D11ShaderResourceView* ResourceManager::GetTextureRaw(const std::string& originalPath, int targetW, int targetH) {
+    return GetOrCacheTexture(originalPath, targetW, targetH);
 }
 
 bool ResourceManager::LoadRawImage(const fs::path& path, DirectX::ScratchImage& outImage) {
@@ -314,25 +288,11 @@ ID3D11ShaderResourceView* ResourceManager::LoadFromCache(const fs::path& cachePa
     return srv.Detach();
 }
 
-bool ResourceManager::ProcessAndCacheTexture(const fs::path& source, const fs::path& cache) {
+bool ResourceManager::ProcessAndCacheTexture(const fs::path& source, const fs::path& cache, int targetW, int targetH) {
     std::wstring wSource = source.wstring();
     std::string ext = source.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    // SMART COPY
-    if (ext == ".dds") {
-        DirectX::TexMetadata meta;
-        if (SUCCEEDED(DirectX::GetMetadataFromDDSFile(wSource.c_str(), DirectX::DDS_FLAGS_NONE, meta))) {
-            bool sizeMatch = (meta.width == TARGET_WIDTH && meta.height == TARGET_HEIGHT);
-            bool formatMatch = (meta.format == TARGET_FORMAT);
-            if (sizeMatch && formatMatch && meta.mipLevels > 1) {
-                try { fs::copy_file(source, cache, fs::copy_options::overwrite_existing); return true; }
-                catch (...) {}
-            }
-        }
-    }
-
-    // CONVERSION PIPELINE
     DirectX::ScratchImage image;
     HRESULT hr = E_FAIL;
 
@@ -342,14 +302,24 @@ bool ResourceManager::ProcessAndCacheTexture(const fs::path& source, const fs::p
 
     if (FAILED(hr)) return false;
 
+    const DirectX::TexMetadata& meta = image.GetMetadata();
+
+    // Smart Copy (если уже правильный размер и формат)
+    if (ext == ".dds" && meta.format == COMPRESSION_FORMAT && meta.mipLevels > 1) {
+        if (targetW == 0 || targetH == 0 || (meta.width == targetW && meta.height == targetH)) {
+            try { fs::copy_file(source, cache, fs::copy_options::overwrite_existing); return true; }
+            catch (...) {}
+        }
+    }
+
     DirectX::ScratchImage uncompressed;
-    if (DirectX::IsCompressed(image.GetMetadata().format)) {
-        hr = DirectX::Decompress(image.GetImages(), image.GetImageCount(), image.GetMetadata(), DXGI_FORMAT_R8G8B8A8_UNORM, uncompressed);
+    if (DirectX::IsCompressed(meta.format)) {
+        hr = DirectX::Decompress(image.GetImages(), image.GetImageCount(), meta, DXGI_FORMAT_R8G8B8A8_UNORM, uncompressed);
         if (FAILED(hr)) return false;
     }
     else {
-        if (image.GetMetadata().format != DXGI_FORMAT_R8G8B8A8_UNORM) {
-            hr = DirectX::Convert(image.GetImages(), image.GetImageCount(), image.GetMetadata(), DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, uncompressed);
+        if (meta.format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+            hr = DirectX::Convert(image.GetImages(), image.GetImageCount(), meta, DXGI_FORMAT_R8G8B8A8_UNORM, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, uncompressed);
             if (FAILED(hr)) uncompressed = std::move(image);
         }
         else {
@@ -357,24 +327,32 @@ bool ResourceManager::ProcessAndCacheTexture(const fs::path& source, const fs::p
         }
     }
 
+    // Ресайз
     DirectX::ScratchImage resized;
-    if (uncompressed.GetMetadata().width != TARGET_WIDTH || uncompressed.GetMetadata().height != TARGET_HEIGHT) {
-        hr = DirectX::Resize(uncompressed.GetImages(), uncompressed.GetImageCount(), uncompressed.GetMetadata(), TARGET_WIDTH, TARGET_HEIGHT, DirectX::TEX_FILTER_LINEAR, resized);
+    if (targetW > 0 && targetH > 0 && (uncompressed.GetMetadata().width != targetW || uncompressed.GetMetadata().height != targetH)) {
+        hr = DirectX::Resize(uncompressed.GetImages(), uncompressed.GetImageCount(), uncompressed.GetMetadata(), targetW, targetH, DirectX::TEX_FILTER_LINEAR, resized);
         if (FAILED(hr)) return false;
     }
     else {
         resized = std::move(uncompressed);
     }
 
+    // Генерация MipMap
     DirectX::ScratchImage mipChain;
-    hr = DirectX::GenerateMipMaps(resized.GetImages(), resized.GetImageCount(), resized.GetMetadata(), DirectX::TEX_FILTER_LINEAR, 0, mipChain);
+    hr = DirectX::GenerateMipMaps(resized.GetImages(), resized.GetImageCount(), resized.GetMetadata(),
+        DirectX::TEX_FILTER_BOX | DirectX::TEX_FILTER_SEPARATE_ALPHA, 0, mipChain);
     if (FAILED(hr)) mipChain = std::move(resized);
 
+    // Компрессия
     DirectX::ScratchImage compressed;
-    hr = DirectX::Compress(mipChain.GetImages(), mipChain.GetImageCount(), mipChain.GetMetadata(), TARGET_FORMAT, DirectX::TEX_COMPRESS_DEFAULT, 1.0f, compressed);
-    if (FAILED(hr)) return false;
+    hr = DirectX::Compress(mipChain.GetImages(), mipChain.GetImageCount(), mipChain.GetMetadata(), COMPRESSION_FORMAT, DirectX::TEX_COMPRESS_DEFAULT, 1.0f, compressed);
 
-    hr = DirectX::SaveToDDSFile(compressed.GetImages(), compressed.GetImageCount(), compressed.GetMetadata(), DirectX::DDS_FLAGS_NONE, cache.wstring().c_str());
+    if (FAILED(hr)) {
+        hr = DirectX::SaveToDDSFile(mipChain.GetImages(), mipChain.GetImageCount(), mipChain.GetMetadata(), DirectX::DDS_FLAGS_NONE, cache.wstring().c_str());
+    }
+    else {
+        hr = DirectX::SaveToDDSFile(compressed.GetImages(), compressed.GetImageCount(), compressed.GetMetadata(), DirectX::DDS_FLAGS_NONE, cache.wstring().c_str());
+    }
 
     return SUCCEEDED(hr);
 }
